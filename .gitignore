@@ -1,0 +1,28 @@
+.tools/
+vendor/
+build/
+dist/
+node_modules/
+artifacts/
+.DS_Store
+__pycache__/
+
+# Local credentials and signing material
+.env
+.env.*
+!.env.example
+*.p12
+*.pfx
+*.key
+*.pem
+*.p8
+*.keychain
+*.keychain-db
+*.mobileprovision
+*.provisionprofile
+
+# Local browser profiles and downloaded installers/extensions
+/profile/
+/profiles/
+*.crx
+*.dmg

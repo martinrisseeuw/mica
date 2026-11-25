@@ -1,0 +1,130 @@
+{
+  "source": "https://github.com/driceroland/Search",
+  "revision": "86bbffc26bf0496b6fee72a88a2fda69fd97bd50",
+  "domains": [
+    "doubleclick.net",
+    "googlesyndication.com",
+    "googleadservices.com",
+    "googletagservices.com",
+    "google-analytics.com",
+    "googletagmanager.com",
+    "adservice.google.com",
+    "amazon-adsystem.com",
+    "adnxs.com",
+    "adsrvr.org",
+    "criteo.com",
+    "criteo.net",
+    "taboola.com",
+    "outbrain.com",
+    "rubiconproject.com",
+    "pubmatic.com",
+    "openx.net",
+    "casalemedia.com",
+    "smartadserver.com",
+    "sharethrough.com",
+    "indexww.com",
+    "bidswitch.net",
+    "33across.com",
+    "teads.tv",
+    "moatads.com",
+    "adroll.com",
+    "scorecardresearch.com",
+    "quantserve.com",
+    "chartbeat.com",
+    "hotjar.com",
+    "mouseflow.com",
+    "fullstory.com",
+    "clarity.ms",
+    "mixpanel.com",
+    "amplitude.com",
+    "segment.com",
+    "segment.io",
+    "branch.io",
+    "appsflyer.com",
+    "adjust.com",
+    "analytics.tiktok.com",
+    "connect.facebook.net",
+    "ads-twitter.com",
+    "analytics.twitter.com",
+    "intergient.com",
+    "btloader.com",
+    "ad-delivery.net",
+    "mentorsticks.com",
+    "dns-finder.com",
+    "confiant-integrations.net",
+    "cloudflareinsights.com"
+  ],
+  "selectors": [
+    ".adsbygoogle",
+    "ins.adsbygoogle",
+    "[id^=\"google_ads_\"]",
+    "[id^=\"div-gpt-ad\"]",
+    "[id^=\"taboola-\"]",
+    "#taboola-below-article",
+    "iframe[src*=\"doubleclick.net\"]",
+    "iframe[src*=\"googlesyndication\"]",
+    "iframe[src*=\"amazon-adsystem\"]",
+    ".ad-slot",
+    ".ad-slot-container",
+    ".top-banner-ad-container",
+    ".ad-leaderboard",
+    ".ad-billboard",
+    ".ad-giga",
+    ".ad-mpu",
+    ".ad-mrec",
+    ".ad-unit",
+    ".adunit",
+    ".adslot",
+    ".dfp-ad",
+    ".gpt-ad",
+    ".w_ad"
+  ],
+  "siteSelectors": [
+    {
+      "hosts": [
+        "as.com",
+        "elpais.com"
+      ],
+      "selector": ".ad"
+    },
+    {
+      "hosts": [
+        "theguardian.com"
+      ],
+      "selector": ".top-fronts-banner-ad-container"
+    },
+    {
+      "hosts": [
+        "independent.co.uk",
+        "the-independent.com"
+      ],
+      "selector": "#billboard-wrapper"
+    },
+    {
+      "hosts": [
+        "cnn.com"
+      ],
+      "selector": ".ad-slot-header__wrapper"
+    },
+    {
+      "hosts": [
+        "albumoftheyear.org"
+      ],
+      "selector": ".headerAd, .homePageAdSquare"
+    },
+    {
+      "hosts": [
+        "reddit.com"
+      ],
+      "selector": "shreddit-ad-post, shreddit-comments-page-ad, shreddit-sidebar-ad, shreddit-dynamic-ad-link, comment-tree-ad, .promotedlink"
+    }
+  ],
+  "youtubePaths": [
+    "/api/stats/ads",
+    "/pagead/",
+    "/ptracking",
+    "/get_midroll_info",
+    "/youtubei/v1/player/ad_break",
+    "/pcs/activeview"
+  ]
+}

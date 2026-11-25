@@ -1,0 +1,8 @@
+Automatic updates are now built into Mica.
+
+Mica checks for new versions and downloads verified updates in the background.
+Updates install when you quit; you can also choose Check for Updates from the Mica menu.
+Turn automatic updates on or off from the same menu.
+
+Update downloads and their feed are cryptographically signed. Existing spaces,
+pins, extensions, website data, and settings remain in your browser profile.
