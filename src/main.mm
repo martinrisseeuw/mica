@@ -28,6 +28,10 @@ public:
                 NSString *popup=[NSProcessInfo.processInfo.environment[@"SEARCHLIGHT_PROFILE"] stringByAppendingPathComponent:@"popup-fixture"];
                 command->AppendSwitchWithValue("load-extension",[NSString stringWithFormat:@"%@,%@",fixture,popup].UTF8String);
             }
+            if ([NSProcessInfo.processInfo.environment[@"MICA_IMPORT_PROBE"] isEqual:@"1"]) {
+                NSString *fixture=[NSProcessInfo.processInfo.environment[@"SEARCHLIGHT_PROFILE"] stringByAppendingPathComponent:@"import-fixture"];
+                command->AppendSwitchWithValue("load-extension",fixture.UTF8String);
+            }
             command->AppendSwitchWithValue("host-resolver-rules","MAP doubleclick.net 127.0.0.1");
         }
     }

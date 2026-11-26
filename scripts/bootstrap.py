@@ -29,4 +29,5 @@ if not (python / 'bin' / 'cmake').exists():
     venv.create(python, with_pip=True)
     subprocess.run([str(python / 'bin' / 'pip'), 'install', 'cmake==4.4.5'], check=True)
 subprocess.run([sys.executable, str(ROOT / 'scripts/bootstrap_sparkle.py')], check=True)
+subprocess.run([sys.executable, str(ROOT / 'scripts/bootstrap_import.py')], check=True)
 print('Dependencies ready.')

@@ -5,6 +5,7 @@
 - (void)toggleExtensionPin:(NSButton *)sender;
 - (void)showExtensions:(id)sender;
 - (void)browseExtensions:(id)sender;
+- (void)importChromeExtensions:(id)sender;
 - (void)hideExtensionMenu;
 @end
 

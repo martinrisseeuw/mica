@@ -92,6 +92,45 @@ On startup Mica discovers the installed 1Password app, verifies its browser help
 
 The isolated compatibility probe checks the official extension's enabled state, its rendered card in the installed overview, the manager's enable/disable controls using a separate minimal test extension, real content-script execution on localhost, its signed-out welcome page, an unpinned extension action without a shortcut, popup access to the active tab, pin/unpin controls, toolbar action access, pin persistence after restart, and the absence of Chrome's toolbar/tab strip in every page. These checks do not validate authenticated vault autofill, passkeys, or desktop pairing. The signed-out 1Password extension deliberately disables its vault popup until setup.
 
+### Import extensions and settings from Chrome
+
+Quit Chrome, then choose **Extensions → Import from Chrome…** (also **Import…**
+in the puzzle menu). Choose a Chrome profile and up to 20 extensions. **Choose
+folder…** supports a Chrome data folder in another location. Extensions already
+installed in the destination space are skipped; unpacked and non-store
+extensions must be installed manually.
+
+**Include supported settings** is selected by default. Each row shows how many
+preferences were recognized; hover over its checkbox to inspect the values.
+The first version supports appearance and behavior preferences with recognized
+names and types: themes, color schemes, selected display toggles, font size,
+zoom, and bounded theme adjustments, including those inside standard settings
+containers. It reads `chrome.storage.local` and the local copy of
+`chrome.storage.sync`. Unknown preferences, arbitrary text, arrays, website
+storage, IndexedDB, session storage, and managed policies are excluded. An
+extension with no supported settings can still be installed.
+
+**Continue to install** opens the selected Chrome Web Store listings. Complete
+each normal installation prompt. Mica then applies supported preferences to
+the new extension in the chosen space and closes its temporary import tab.
+Existing defaults outside the imported keys are retained. This is a one-time
+import, not Chrome Sync. Accounts, authentication tokens, cookies, passwords,
+Keychain items, and desktop-app pairing are not migrated; sign in again where
+needed. Chromium’s existing extension compatibility limits still apply.
+
+**Extensions → Import Progress…** shows waiting, completed, and failed entries.
+Pending imports survive restart; interrupted settings writes require an
+explicit retry. Cancelling pending imports discards the remaining settings but
+keeps extensions already installed. If Chrome is running or a settings database
+cannot be read, the affected row reports this; cancel and retry after quitting
+Chrome to include those settings.
+
+Chrome’s files are read without modification. LevelDB opens a bounded snapshot
+in memory; only allowlisted preference values are saved in Mica’s import queue.
+No raw Chrome database or account storage is copied into Mica. The allowlist is
+in `src/ExtensionImport.mm`; extending support requires reviewing the preference
+names, value types, and account-data boundary.
+
 ## Ad blocking
 
 Rules are imported from [Search’s MIT-licensed Shield](https://github.com/driceroland/Search/blob/86bbffc26bf0496b6fee72a88a2fda69fd97bd50/Sources/Search/Shield.swift): 51 ad/tracker domains, generic and site-specific cosmetic selectors, and YouTube ad-request paths. CEF cancels matching third-party requests and injects cosmetic CSS into documents. First-party requests and Search’s YouTube script exception are preserved. Rules ship in the app; there is no startup list download.
@@ -130,6 +169,7 @@ Current engine: CEF `158.0.6+g23f1736`, Chromium `158.0.8127.89`. CEF is bundled
 ```sh
 .tools/python/bin/ctest --test-dir build --output-on-failure
 python3 test/smoke.py
+python3 test/extension_import.py
 ```
 
 The integration test launches the real app with a disposable profile and a local HTTP fixture. It checks immediate typing, complete URL display/copying and first-click selection, a single empty tab per space, history completion and keyboard navigation, favicon restoration, minimum-size layout, ad blocking, DevTools console/DOM commands and full-panel layout, all four dock positions through the native and built-in controls, closing the DevTools window without closing its page, and resuming paused execution on detach. It also checks pinned rows and folders, Command-W without reopening closed pins, saved pin URLs, extension-download handoff, space cookie isolation, network error recovery, Command-Q, application Quit, window-close shutdown, and persistence after restart. Quit targets Mica’s controller directly because Chromium can replace the application delegate. Command-Q is handled at the application boundary so it never enters Chromium’s separate quit flow. Results are in `artifacts/`. Chromium's mock Keychain uses synthetic cookies, so the test does not access your normal browser profile or macOS Keychain. That mock is enabled only by the explicit test flag combined with a disposable `searchlight-smoke-*` profile and a localhost fixture URL.
@@ -147,7 +187,7 @@ It records each checked behavior in `artifacts/extension-result.json` and fails 
 
 New installations store data in `~/Library/Application Support/Mica/`. If an earlier Searchlight profile exists, the first launch offers **Start Fresh** (the default) or **Keep My Data**, before initializing Chromium. Starting fresh leaves Searchlight's data and Keychain item untouched. Keeping existing data reuses that profile and its original Keychain identity; macOS may require permission for the new signed app to use the old encryption key. The choice is saved in `Mica/profile-choice.json`. Do not run both browsers against a shared profile at once. `MICA_PROFILE` selects an absolute alternate path; `SEARCHLIGHT_PROFILE` remains supported for existing development setups.
 
-`session.json` holds tabs/spaces; `Space-<uuid>/` contains each Chromium profile. `History/<uuid>.json` and `Favicons/<uuid>/` hold local suggestions and cached icons. No other browser data is imported. HTTP/HTTPS and `about:blank` are allowed for ordinary navigation. Explicit extension routes are validated separately. `mica://extensions/` opens the embedded extension manager; the old `searchlight://extensions` route remains compatible. Webpages have no native JavaScript bridge. The bundled DevTools frontend alone receives a scoped protocol bridge.
+`session.json` holds tabs/spaces; `Space-<uuid>/` contains each Chromium profile. `History/<uuid>.json` and `Favicons/<uuid>/` hold local suggestions and cached icons. `extension-imports.json` holds explicitly selected extension IDs, destination spaces, and filtered preference values while an import is pending. No accounts or other browser data are imported. HTTP/HTTPS and `about:blank` are allowed for ordinary navigation. Explicit extension routes are validated separately. `mica://extensions/` opens the embedded extension manager; the old `searchlight://extensions` route remains compatible. Webpages have no native JavaScript bridge. The bundled DevTools frontend alone receives a scoped protocol bridge.
 
 Chromium's subprocess sandbox and TLS validation remain enabled. New profiles use **Mica Safe Storage**; existing profiles retain **Searchlight Safe Storage** so encrypted data stays readable. Ad-hoc rebuilds change code identity and can trigger repeated Keychain authorization. Developer ID signed builds with a stable bundle identifier and team preserve signing identity across updates. The first transition to Mica may still ask for access once. Tests use a disposable profile and mock Keychain, never the user's normal profile.
 

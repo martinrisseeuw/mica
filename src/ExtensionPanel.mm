@@ -103,6 +103,7 @@ NSView *SLExtensionGrid(NSArray<NSDictionary *> *actions, NSArray<NSString *> *p
         NSTextField *label=Label(title,11); label.alignment=NSTextAlignmentCenter; label.lineBreakMode=NSLineBreakByTruncatingTail; label.frame=NSMakeRect(x,y+62,64,16); label.toolTip=title; [grid addSubview:label];
     }
     previous.nextKeyView=manage; manage.nextKeyView=first;
+    NSButton *import=[NSButton buttonWithTitle:@"Import…" target:target action:@selector(importChromeExtensions:)]; import.bordered=NO; import.font=[NSFont systemFontOfSize:12]; import.frame=NSMakeRect(171,16,60,20); import.toolTip=@"Import extensions and supported settings from Chrome"; [root addSubview:import]; previous.nextKeyView=import; import.nextKeyView=manage;
     NSTextField *hint=Label(actions.count?@"Pin extensions beside the address bar.":@"Add extensions from the Chrome Web Store.",12);
     hint.textColor=SLThemeColor(SLSecondaryText); hint.frame=NSMakeRect(16,68+gridHeight,280,18); [root addSubview:hint];
     return root;

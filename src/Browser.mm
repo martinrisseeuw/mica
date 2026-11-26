@@ -8,6 +8,9 @@
 #import "History.h"
 #import "StartPage.h"
 #import "ExtensionPanel.h"
+#import "ExtensionImportPanel.h"
+#import "ExtensionImport.h"
+#include "ExtensionImportBridge.h"
 #include "ChromeExtensions.h"
 #include "include/cef_id_mappers.h"
 #import <CommonCrypto/CommonDigest.h>
@@ -43,7 +46,7 @@ static NSImage *Icon(NSString *name) { return [NSImage imageWithSystemSymbolName
 class ToolsConnection;
 class ChromeTabHost;
 
-@interface SLTab : NSObject { @public CefRefPtr<CefBrowser> browser, toolsBrowser; CefRefPtr<CefRegistration> testRegistration; CefRefPtr<ToolsConnection> toolsConnection; CefRefPtr<ChromeTabHost> chrome; }
+@interface SLTab : NSObject { @public CefRefPtr<CefBrowser> browser, toolsBrowser; CefRefPtr<CefRegistration> testRegistration; CefRefPtr<ToolsConnection> toolsConnection; CefRefPtr<ChromeTabHost> chrome; CefRefPtr<SLExtensionImportBridge> importBridge; }
 @property NSString *uid;
 @property NSString *url;
 @property NSString *title;
@@ -52,6 +55,7 @@ class ChromeTabHost;
 @property NSString *faviconURL;
 @property NSUInteger navigationGeneration;
 @property BOOL trustedInternal;
+@property BOOL importingSettings;
 @property BOOL popup;
 @property BOOL rehosting;
 @property BOOL pinned;
@@ -167,6 +171,12 @@ class ChromeTabHost;
 @property SLExtensionPanel *extensionPanel;
 @property id extensionMouseMonitor;
 @property BOOL extensionRefreshScheduled;
+@property SLExtensionImportPanel *importPanel;
+@property NSMutableArray<NSMutableDictionary *> *extensionImports;
+@property NSTimer *extensionImportTimer;
+@property SLTab *extensionImportTab;
+@property NSMutableDictionary *extensionImportJob;
+@property NSDate *extensionImportStarted;
 @property SLViewportBackdrop *viewportBackdrop;
 @property CGFloat sidebarReveal;
 @property NSTimer *sidebarAnimation;
@@ -255,6 +265,10 @@ class ChromeTabHost;
 - (void)hideSuggestions;
 - (void)openChromeURL:(NSString *)url;
 - (void)ensureContext:(SLSpace *)space;
+- (void)importChromeExtensions:(id)sender;
+- (void)extensionImportTick:(NSTimer *)timer;
+- (void)finishExtensionImport:(BOOL)success;
+- (void)startExtensionImportTimer;
 - (void)renderSuggestions;
 - (BOOL)handleChromeCommand:(int)command tab:(SLTab *)tab;
 - (NSString *)faviconPath:(NSString *)url space:(SLSpace *)space;
@@ -549,6 +563,7 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
         _testMode=!updatesEnabled;
         _pendingExternalURLs=[NSMutableArray array];
         _profile=profile; _spaces=[NSMutableArray array]; _closingTabs=[NSMutableArray array]; _closedTabs=[NSMutableArray array];
+        _extensionImports=[SLReadExtensionImports([profile stringByAppendingPathComponent:@"extension-imports.json"]) mutableCopy];
         NSDictionary *state=SLReadSession([profile stringByAppendingPathComponent:@"session.json"]);
         _sidebarVisible=[state[@"sidebarVisible"] boolValue];
         _sidebarReveal=_sidebarVisible?1:0;
@@ -639,6 +654,7 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
     [self buildMenus]; [self layout]; [self refresh]; [_window makeKeyAndOrderFront:nil]; [NSApp activateIgnoringOtherApps:YES];
     [_updates start];
     [self ensureContext:_activeSpace]; [self loadTab:_activeTab];
+    [self startExtensionImportTimer];
     if (!_activeTab.url.length) [self focusNewTab];
     NSArray *pending=_pendingExternalURLs.copy; [_pendingExternalURLs removeAllObjects]; [self openExternalURLArguments:pending];
     _smokePath=NSProcessInfo.processInfo.environment[@"SEARCHLIGHT_SMOKE_RESULT"];
@@ -961,7 +977,7 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
     if (![_closingTabs containsObject:tab]) [_closingTabs addObject:tab];
     if (!_quitting && !tab.sleeping && ![self spaceForTab:tab].removing) {
         for (SLSpace *space in _spaces) if ([space.tabs containsObject:tab]) {
-            [_closedTabs addObject:@{@"url":tab.url,@"title":tab.title}]; if (_closedTabs.count>20) [_closedTabs removeObjectAtIndex:0];
+            if (!tab.importingSettings) { [_closedTabs addObject:@{@"url":tab.url,@"title":tab.title}]; if (_closedTabs.count>20) [_closedTabs removeObjectAtIndex:0]; }
             [space.tabs removeObject:tab]; break;
         }
     }
@@ -986,7 +1002,7 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
     if (_quitting) [self finishQuitIfReady];
     else { [self finishSpaceRemoval]; [self refresh]; }
 }
-- (void)closeCancelled:(SLTab *)tab { tab.closing=NO; tab.sleeping=NO; _quitting=NO; [self refresh]; }
+- (void)closeCancelled:(SLTab *)tab { tab.closing=NO; tab.sleeping=NO; _quitting=NO; [self startExtensionImportTimer]; [self refresh]; }
 - (void)reopenTab:(id)sender { NSDictionary *closed=_closedTabs.lastObject; if (closed) { [_closedTabs removeLastObject]; [self addTabURL:closed[@"url"]]; } }
 - (void)toggleSidebar:(id)sender {
     _sidebarVisible=!_sidebarVisible; [_sidebarAnimation invalidate]; _sidebarAnimation=nil;
@@ -1261,6 +1277,8 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
 #include "DesktopUI.inc"
 #include "HistoryUI.inc"
 #include "ExtensionsUI.inc"
+#include "ExtensionImportUI.inc"
+#include "../test/ExtensionImportSmoke.inc"
 #include "SidebarUI.inc"
 
 - (void)controlTextDidChange:(NSNotification *)notification {
@@ -1298,6 +1316,7 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
         NSMutableArray *tabs=[NSMutableArray array];
         if (space.removing) continue;
         for (SLTab *tab in space.tabs) {
+            if (tab.importingSettings) continue;
             NSMutableDictionary *entry=[@{@"id":tab.uid,@"url":tab.url,@"title":tab.title,@"pinned":@(tab.pinned)} mutableCopy];
             if (tab.pinned) { entry[@"pinURL"]=tab.pinURL ?: tab.url; entry[@"pinTitle"]=tab.pinTitle ?: tab.title; if (tab.folderID) entry[@"folderID"]=tab.folderID; }
             [tabs addObject:entry];
@@ -1322,6 +1341,8 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
 - (BOOL)applicationShouldHandleReopen:(NSApplication *)app hasVisibleWindows:(BOOL)visible { [_window makeKeyAndOrderFront:nil]; return YES; }
 - (BOOL)applicationSupportsSecureRestorableState:(NSApplication *)app { return YES; }
 - (void)requestQuit {
+    [_extensionImportTimer invalidate]; _extensionImportTimer=nil;
+    if (_extensionImportJob) [self finishExtensionImport:NO];
     [_sidebarAnimation invalidate]; _sidebarAnimation=nil; [self hideExtensionMenu];
     [self hideSuggestions];
     if (_smokePath.length) fprintf(stderr,"smoke: requestQuit at step %ld\n",(long)_smokeStep);
@@ -1410,6 +1431,8 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
     [self menuItem:@"Clear History in This Space" action:@selector(clearHistory:) key:@"" flags:0 menu:privacy];
     NSMenu *extensions=submenu(@"Extensions");
     [self menuItem:@"Manage Extensions…" action:@selector(showExtensions:) key:@"" flags:0 menu:extensions];
+    [self menuItem:@"Import from Chrome…" action:@selector(importChromeExtensions:) key:@"" flags:0 menu:extensions];
+    [self menuItem:@"Import Progress…" action:@selector(showExtensionImportProgress:) key:@"" flags:0 menu:extensions];
     [self menuItem:@"Get 1Password…" action:@selector(installOnePassword:) key:@"" flags:0 menu:extensions];
     [self menuItem:@"Browse Extensions…" action:@selector(browseExtensions:) key:@"" flags:0 menu:extensions];
 
@@ -1597,6 +1620,7 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
     if (_smokeTicks==0 || _smokeTicks%10==0) fprintf(stderr,"smoke: step %ld, title %s, error %s\n",(long)_smokeStep,_activeTab.title.UTF8String,(_activeTab.error ?: @"none").UTF8String);
     _smokeTicks++;
     if (_smokeTicks>180) { [self smokeFinish:@"Timed out waiting for native/CEF integration"]; return; }
+    if (_testMode && [NSProcessInfo.processInfo.environment[@"MICA_IMPORT_PROBE"] isEqual:@"1"]) { [self extensionImportSmokeTick]; return; }
     if ([NSProcessInfo.processInfo.environment[@"SEARCHLIGHT_SMOKE_RESTORE"] isEqual:@"1"]) {
         if (_activeTab.loading || ![_activeTab.title isEqual:@"Cookie present"]) return;
         NSUInteger loaded=0, pins=0;

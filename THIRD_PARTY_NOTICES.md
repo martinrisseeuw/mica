@@ -17,3 +17,10 @@ The docked developer tools use the unmodified Chromium DevTools frontend bundled
 Sparkle 2.10.1 provides native macOS updates, under the license bundled as
 `Mica.app/Contents/Resources/LICENSE-Sparkle.txt`.
 Project and source: https://github.com/sparkle-project/Sparkle/tree/2.10.1
+
+LevelDB 1.23 and Snappy 1.2.2 read Chrome extension settings from an in-memory
+snapshot. Both use BSD-style licenses, bundled as `LICENSE-LevelDB.txt` and
+`LICENSE-Snappy.txt` in the app’s Resources directory. Source archives and
+SHA-256 checksums are pinned in `scripts/bootstrap_import.py`.
+Sources: https://github.com/google/leveldb/tree/1.23 and
+https://github.com/google/snappy/tree/1.2.2
