@@ -111,17 +111,20 @@ storage, IndexedDB, session storage, and managed policies are excluded. An
 extension with no supported settings can still be installed.
 
 **Continue to install** opens the selected Chrome Web Store listings. Complete
-each normal installation prompt. Mica then applies supported preferences to
-the new extension in the chosen space and closes its temporary import tab.
+each normal installation prompt and finish extension setup. Then choose
+**Extensions → Import Progress… → Apply settings**. Mica applies supported
+preferences in the chosen space and closes its temporary import tab. Applying
+is explicit because an extension’s setup can overwrite preferences.
 Existing defaults outside the imported keys are retained. This is a one-time
 import, not Chrome Sync. Accounts, authentication tokens, cookies, passwords,
 Keychain items, and desktop-app pairing are not migrated; sign in again where
 needed. Chromium’s existing extension compatibility limits still apply.
 
-**Extensions → Import Progress…** shows waiting, completed, and failed entries.
+**Extensions → Import Progress…** shows waiting, ready, completed, and failed entries.
 Pending imports survive restart; interrupted settings writes require an
-explicit retry. Cancelling pending imports discards the remaining settings but
-keeps extensions already installed. If Chrome is running or a settings database
+explicit retry. Filtered preferences remain available for **Reapply settings**
+if an extension resets them later. **Discard imports** removes saved preferences
+and cancels unfinished imports, while keeping extensions already installed. If Chrome is running or a settings database
 cannot be read, the affected row reports this; cancel and retry after quitting
 Chrome to include those settings.
 

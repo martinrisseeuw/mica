@@ -34,10 +34,21 @@ with tempfile.TemporaryDirectory(prefix='searchlight-smoke-') as directory:
     identifier = ''.join(chr(97 + int(c, 16)) for c in hashlib.sha256(public).hexdigest()[:32])
     manifest = dict(manifest_version=3, name='Mica import fixture', version='1.0', key=base64.b64encode(public).decode(), permissions=['storage'], background={'service_worker': 'background.js'}, action={'default_popup': 'verify.html'})
     (fixture / 'manifest.json').write_text(json.dumps(manifest))
-    (fixture / 'background.js').write_text("chrome.runtime.onInstalled.addListener(async()=>{for(const area of ['local','sync']){if((await chrome.storage[area].get('theme')).theme!==undefined)continue;await chrome.storage[area].set({theme:'light',settings:{showBadge:true,keepDefault:17},destinationOnly:'keep-me'});}});")
+    (fixture / 'background.js').write_text("chrome.runtime.onInstalled.addListener(async()=>{if((await chrome.storage.local.get('fixtureInitialized')).fixtureInitialized)return;await new Promise(r=>setTimeout(r,4000));for(const area of ['local','sync'])await chrome.storage[area].set({theme:'light',settings:{showBadge:true,keepDefault:17},destinationOnly:'keep-me'});await chrome.storage.local.set({fixtureInitialized:true});});")
     (fixture / 'verify.html').write_text('<!doctype html><title>Checking import</title><script src="verify.js"></script>')
     (fixture / 'verify.js').write_text("""(async()=>{
       const isolated=location.search.includes('isolated');
+      if(location.search.includes('setup')){
+        for(let i=0;i<100;i++){
+          if((await chrome.storage.local.get('fixtureInitialized')).fixtureInitialized)break;
+          await new Promise(r=>setTimeout(r,100));
+        }
+        for(const area of ['local','sync']){
+          const data=await chrome.storage[area].get(null);
+          if(data.theme!=='light'||data.fontSize!==undefined)throw Error('Settings applied before setup completed');
+        }
+        document.title='Setup verified';return;
+      }
       for(const area of ['local','sync']){
         const data=await chrome.storage[area].get(null);
         if(isolated){if(data.theme==='dark'||data.fontSize!==undefined||data.settings?.showBadge===false)throw Error('Settings crossed spaces');continue;}

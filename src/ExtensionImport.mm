@@ -194,7 +194,7 @@ static NSMutableDictionary *CleanJob(id input) {
     NSDictionary *job=Dictionary(input);
     if (!SLValidExtensionID(job[@"id"]) || !Matches(job[@"space"],@"^[A-Za-z0-9-]{1,64}$")) return nil;
     NSString *state=job[@"state"];
-    if (![@[@"waiting",@"applying",@"done",@"failed"] containsObject:state]) return nil;
+    if (![@[@"waiting",@"ready",@"queued",@"applying",@"done",@"failed"] containsObject:state]) return nil;
     NSDictionary *settings=Dictionary(job[@"settings"]);
     return [@{@"id":job[@"id"],@"space":job[@"space"],@"name":Text(job[@"name"],job[@"id"]),@"state":state,@"settings":@{@"local":SLImportablePreferences(settings[@"local"]),@"sync":SLImportablePreferences(settings[@"sync"])}} mutableCopy];
 }
@@ -210,6 +210,10 @@ NSArray<NSMutableDictionary *> *SLReadExtensionImports(NSString *path) {
     id raw=data?[NSJSONSerialization JSONObjectWithData:data options:0 error:nil]:nil;
     NSMutableArray *jobs=[NSMutableArray array];
     if (![raw isKindOfClass:NSArray.class] || [raw count]>200) return jobs;
-    for (id input in raw) { NSMutableDictionary *job=CleanJob(input); if (job) { if ([job[@"state"] isEqual:@"applying"]) job[@"state"]=@"failed"; [jobs addObject:job]; } }
+    for (id input in raw) { NSMutableDictionary *job=CleanJob(input); if (job) {
+        if ([job[@"state"] isEqual:@"applying"]) job[@"state"]=@"failed";
+        else if ([job[@"state"] isEqual:@"queued"]) job[@"state"]=@"ready";
+        [jobs addObject:job];
+    } }
     return jobs;
 }

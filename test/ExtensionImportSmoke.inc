@@ -1,3 +1,8 @@
+- (NSButton *)importSmokeButton:(NSString *)title inView:(NSView *)view {
+    if ([view isKindOfClass:NSButton.class] && [((NSButton *)view).title isEqual:title]) return (NSButton *)view;
+    for (NSView *child in view.subviews) { NSButton *found=[self importSmokeButton:title inView:child]; if (found) return found; }
+    return nil;
+}
 - (void)extensionImportSmokeTick {
     if (!_activeSpace.contextReady) return;
     NSString *identifier=NSProcessInfo.processInfo.environment[@"MICA_IMPORT_FIXTURE_ID"];
@@ -32,9 +37,40 @@
     }
     if (_smokeStep==2) {
         NSDictionary *job=_extensionImports.firstObject;
+        if ([job[@"state"] isEqual:@"failed"] || [job[@"state"] isEqual:@"done"] || _extensionImportTab) { [self smokeFinish:@"Settings must wait for explicit application after setup"]; return; }
+        if (![job[@"state"] isEqual:@"ready"]) return;
+        [self addTabURL:[NSString stringWithFormat:@"chrome-extension://%@/verify.html?setup",identifier]]; _smokeStep=20; return;
+    }
+    if (_smokeStep==20) {
+        if ([_activeTab.title hasPrefix:@"Import failure:"]) { [self smokeFinish:_activeTab.title]; return; }
+        if (![_activeTab.title isEqual:@"Setup verified"]) return;
+        [_smokeChecks addObject:@"Delayed installation defaults finish before explicit settings application"];
+        [self showExtensionImportProgress:nil];
+        NSButton *apply=[self importSmokeButton:@"Apply settings" inView:_window.attachedSheet.contentView];
+        if (!apply) { [self smokeFinish:@"Import Progress does not expose Apply settings"]; return; }
+        [self captureView:_window.attachedSheet.contentView filename:@"extension-import-progress.png"];
+        [apply performClick:nil]; _smokeStep=21; return;
+    }
+    if (_smokeStep==21) {
+        NSDictionary *job=_extensionImports.firstObject;
         if ([job[@"state"] isEqual:@"failed"]) { [self smokeFinish:@"Runtime rejected extension settings import"]; return; }
         if (![job[@"state"] isEqual:@"done"]) return;
+        if (!SLPreferenceCount(job[@"settings"][@"local"])) { [self smokeFinish:@"Completed import discarded its reapplication payload"]; return; }
         [_smokeChecks addObject:@"Native profile picker reads real Chrome-format settings and imports selected preferences"];
+        _activeTab->browser->GetMainFrame()->ExecuteJavaScript("chrome.storage.local.set({theme:'light'}).then(()=>document.title='Reset simulated')","",0);
+        _smokeStep=22; return;
+    }
+    if (_smokeStep==22) {
+        if (![_activeTab.title isEqual:@"Reset simulated"]) return;
+        [self showExtensionImportProgress:nil];
+        NSButton *reapply=[self importSmokeButton:@"Reapply settings" inView:_window.attachedSheet.contentView];
+        if (!reapply) { [self smokeFinish:@"Completed imports cannot be reapplied"]; return; }
+        [reapply performClick:nil]; _smokeStep=23; return;
+    }
+    if (_smokeStep==23) {
+        if ([_extensionImports.firstObject[@"state"] isEqual:@"failed"]) { [self smokeFinish:@"Reapplication failed"]; return; }
+        if (![_extensionImports.firstObject[@"state"] isEqual:@"done"]) return;
+        [_smokeChecks addObject:@"Filtered preferences remain available for explicit reapplication after a reset"];
         [self addTabURL:[NSString stringWithFormat:@"chrome-extension://%@/verify.html",identifier]]; _smokeStep=4; return;
     }
     if (_smokeStep==4) {

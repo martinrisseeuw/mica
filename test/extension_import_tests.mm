@@ -95,6 +95,12 @@ int main(int argc,char **argv) { @autoreleasepool {
     NSString *serialized=[NSString stringWithContentsOfFile:queue encoding:NSUTF8StringEncoding error:nil];
     assert(![serialized containsString:@"secret"] && ![serialized containsString:@"refreshToken"]);
     assert([NSFileManager.defaultManager attributesOfItemAtPath:queue error:nil].filePosixPermissions==0600);
+    for (NSString *state in @[@"ready",@"queued",@"done"]) {
+        NSMutableDictionary *pending=[job mutableCopy]; pending[@"state"]=state;
+        assert(SLSaveExtensionImports(@[pending],queue,nil));
+        NSDictionary *record=SLReadExtensionImports(queue).firstObject;
+        assert([record[@"state"] isEqual:([state isEqual:@"queued"]?@"ready":state)] && [record[@"settings"][@"local"] isEqual:safe]);
+    }
     assert(!SLSaveExtensionImports(@[@{@"id":@"invalid"}],queue,nil));
     assert(!SLExtensionSettingsScript(@"invalid",@{}));
     NSString *script=SLExtensionSettingsScript(identifier,@{@"local":dangerous});
