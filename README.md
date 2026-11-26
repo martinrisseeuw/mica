@@ -1,6 +1,6 @@
 # Mica
 
-A native macOS browser for development, inspired by Search's compact interface. AppKit draws the sidebar, address bar, history/search overlay, extension menu, and start page. Page-only CEF Views supply Chromium and Chrome DevTools, without a second browser toolbar or tab strip. There is no Electron, Node runtime, or web-rendered browser interface.
+A native macOS browser for development, inspired by Search's compact interface. AppKit draws the resizable sidebar, tab address editor, history/search overlay, extension menu, and start page. Page-only CEF Views supply Chromium and Chrome DevTools, without a second browser toolbar or tab strip. There is no Electron, Node runtime, or web-rendered browser interface.
 
 [Download Mica for macOS](https://github.com/martinrisseeuw/mica-releases/releases/latest) · [Report an issue](https://github.com/martinrisseeuw/mica/issues) · [MIT license](LICENSE)
 
@@ -33,12 +33,12 @@ archive signatures are verified before extraction. An installation older than
 ## Included
 
 - Real Chromium pages and Chrome DevTools docked at the bottom by default, with saved bottom, right, left, or separate-window placement. DevTools' own Dock side controls and Mica's menu stay synchronized. Includes Inspect Element.
-- Address/search field with localhost, ports, IPv4/IPv6 loopback, HTTPS URLs, and DuckDuckGo search. The complete URL stays visible, including paths, query parameters, and fragments. Click or press Command-L to select the full address; click again to edit part of it. Local history suggests URLs and titles per space, selects an inline completion, and switches to an existing tab when possible.
+- On-demand address/search editor with localhost, ports, IPv4/IPv6 loopback, HTTPS URLs, and DuckDuckGo search. Click the selected sidebar tab or press Command-L to open it with the complete URL selected, including paths, query parameters, and fragments. Click again to edit part of it; Copy link copies the current page URL. Return opens the edited address in the same tab, and Escape or clicking outside dismisses the editor. Local history suggests URLs and titles per space, selects an inline completion, and switches to an existing tab when possible.
 - Minimal light sidebar from the [Paper design](https://app.paper.design/file/01M893AJRGZKRCEM7YG87V6Q5R/p-1-0): named pinned rows and collapsible folders above a divider, regular tabs below, favicon icons, active/hover close buttons, duplicate/reopen/close, and manual tab unloading.
 - Default-on ad and tracker blocking, with per-site pause in the Privacy menu.
 - A native, minimal start page from Paper: Mica mark, large focused search field, up to six pins from the current space, and keyboard hints. Pin shortcuts select the existing saved tab without creating a duplicate. New Tab reuses the current space's empty tab, including after session restoration.
 - Named spaces with separate cookies, website storage, history, favicon caches, and extension profiles.
-- Saved tabs, pins, active space, window size, and sidebar visibility. Restored inactive tabs load only when selected.
+- Saved tabs, pins, active space, window size, sidebar visibility, and sidebar width. Drag the sidebar’s right edge between 160 and 360 pt. Back, Forward, Refresh, and the sidebar toggle share one row beside the traffic lights; below 216 pt they move into a navigation “…” menu. The page fills the top of the window while the sidebar is visible. Restored inactive tabs load only when selected.
 - Back/forward, reload, reload without cache, zoom, find in page, native download save dialogs, and recoverable network error pages.
 - Light and dark appearances that follow macOS, a subtly translucent sidebar, and accessible AppKit controls. Sidebar toggling slides over 180 ms with ease-out timing, supports reversal during motion, and respects macOS Reduce Motion.
 - `mica://extensions/` shows installed extensions in the current space, including enable/disable, details, permissions, removal, and keyboard shortcuts. The Extensions menu links to the official 1Password listing and Chrome Web Store.
@@ -49,7 +49,7 @@ Use **File → New Folder** or **right-click a tab → Move to Folder → New Fo
 
 Choose **Mica → Make Mica Default Browser…** to request HTTP and HTTPS link handling through macOS. The system asks for consent; this never runs automatically. Links from other apps open in the active space. Only web URLs are accepted from external applications.
 
-Mica follows **System Settings → Appearance**, including live changes between Light, Dark, and Auto. The sidebar, top bar, and viewport margins share one native background blur and tint; macOS Reduce Transparency provides the solid alternative. Start pages, suggestions, extension controls, and browser chrome use matching adaptive colors. Website appearance follows the site's own support for the system color scheme. With the sidebar hidden, the viewport has equal 8 pt left and right margins; this inset blends into the sidebar animation.
+Mica follows **System Settings → Appearance**, including live changes between Light, Dark, and Auto. The sidebar, controls, and viewport margins share one native background blur and tint; macOS Reduce Transparency provides the solid alternative. Start pages, suggestions, extension controls, and browser chrome use matching adaptive colors. Website appearance follows the site's own support for the system color scheme. With the sidebar hidden, the viewport has equal 8 pt left and right margins; this inset blends into the sidebar animation.
 
 Choose **DevTools ⋮ → Dock side** or **Developer → DevTools Position → Bottom / Right / Left / Window**. The frontend fills its panel without an extra Mica header. Both controls update the same saved placement, including docking back from a separate window. Docked DevTools stays attached to its tab and closes when that tab is unloaded or closed. The page and tools share one softly shadowed outer outline, with square corners at their seam.
 
@@ -68,6 +68,7 @@ Every placement uses Chromium’s bundled DevTools frontend and CEF’s native p
 | ⌘R / ⇧⌘R | Reload / reload without cache |
 | ⌘[ / ⌘] | Back / forward |
 | ⌘F | Find in page |
+| ⌘G / ⇧⌘G | Next / previous match (also Enter / Shift+Enter in the find field) |
 | Control+Tab / Control+Shift+Tab | Next / previous tab |
 | ⌘1–8 / ⌘9 | Select tab / last tab |
 | ⌘+ / ⌘− / ⌘0 | Zoom / reset |
@@ -80,17 +81,59 @@ History keeps up to 2,000 unique HTTP(S) URLs per space. Failed loads and intern
 
 ## Extensions and 1Password
 
-Click the puzzle icon or use **Extensions → Manage Extensions**. **Get 1Password** opens the official Chrome Web Store. Chromium handles installation prompts, permissions, updates, and real extension popups. Mica’s puzzle menu shows enabled extension actions in a four-column icon grid, including extensions without a keyboard shortcut. Click an icon to open it, its small pin to add/remove it beside the address bar, **Manage** for installed extensions, or **Add** for the store. Pins belong to the current space and persist across restarts. At narrow widths excess pinned icons remain accessible in the grid. Right-click a toolbar icon to unpin it; Escape or clicking outside dismisses the grid. Selecting an extension invokes Chromium's real action in the active tab, preserving its popup and `activeTab` permission. Opening an action from New Tab first opens the extension manager as its browser surface. No vendor extension code is redistributed with Mica.
+Click the puzzle icon or use **Extensions → Manage Extensions**. **Get 1Password** opens the official Chrome Web Store. Chromium handles installation prompts, permissions, updates, and real extension popups. Mica’s puzzle menu shows enabled extension actions in a four-column icon grid, including extensions without a keyboard shortcut. Click an icon to open it, its small pin to add/remove it in the sidebar footer, **Manage** for installed extensions, or **Add** for the store. Pins belong to the current space and persist across restarts. At narrow widths excess pinned icons remain accessible in the grid. Right-click a toolbar icon to unpin it; Escape or clicking outside dismisses the grid. Selecting an extension invokes Chromium's real action in the active tab, preserving its popup and `activeTab` permission. Opening an action from New Tab first opens the extension manager as its browser surface. No vendor extension code is redistributed with Mica.
 
-You can also type **`mica://extensions/`** directly. This is a public alias for Chromium's built-in manager, embedded below Mica's own toolbar. Its installed list belongs to the active space; `mica://extensions/shortcuts` opens shortcut settings. Extension packages (`.crx` or `application/x-chrome-extension`) go to Chromium's installation/download handler instead of Mica's generic Save As panel. Normal downloads retain the native save dialog; extension source, signature, and permission checks remain Chromium's responsibility.
+You can also type **`mica://extensions/`** directly. This is a public alias for Chromium's built-in manager, embedded in Mica’s page viewport. Its installed list belongs to the active space; `mica://extensions/shortcuts` opens shortcut settings. Extension packages (`.crx` or `application/x-chrome-extension`) go to Chromium's installation/download handler instead of Mica's generic Save As panel. Normal downloads retain the native save dialog; extension source, signature, and permission checks remain Chromium's responsibility.
 
-The Chromium toolbar exists internally for extension actions but stays hidden; Mica always displays its own address bar and sidebar. Extension-created native windows are hidden and their destination is reopened in a page-only Mica tab within the same space. That creates a new Chromium tab ID, so extensions that depend on the original tab ID or opener of those windows are not fully compatible. Normal webpage popups use CEF Views directly and preserve their opener. Programmatic `chrome.action.openPopup()` is limited by CEF's popup-style host; Mica's icon menu and registered action shortcuts use Chromium's real popup path.
+The Chromium toolbar exists internally for extension actions but stays hidden; Mica supplies its own navigation controls and sidebar. Extension-created native windows are hidden and their destination is reopened in a page-only Mica tab within the same space. That creates a new Chromium tab ID, so extensions that depend on the original tab ID or opener of those windows are not fully compatible. Normal webpage popups use CEF Views directly and preserve their opener. Programmatic `chrome.action.openPopup()` is limited by CEF's popup-style host; Mica's icon menu and registered action shortcuts use Chromium's real popup path.
 
 To connect the 1Password desktop app, install the Developer ID signed Mica app in Applications, install the official extension, and add Mica under **1Password → Settings → Browser** as described in [1Password's trusted-browser instructions](https://support.1password.com/additional-browsers/). Sign in locally; no account secrets are part of the browser build or its tests.
 
 On startup Mica discovers the installed 1Password app, verifies its browser helper's Apple signature and 1Password team identity, and registers that helper in Mica's own profile. Only the official stable extension is allowed to use this connector. Restart Mica if you install the desktop app afterward. Automated browser tests skip this connector and never connect to your desktop vault.
 
 The isolated compatibility probe checks the official extension's enabled state, its rendered card in the installed overview, the manager's enable/disable controls using a separate minimal test extension, real content-script execution on localhost, its signed-out welcome page, an unpinned extension action without a shortcut, popup access to the active tab, pin/unpin controls, toolbar action access, pin persistence after restart, and the absence of Chrome's toolbar/tab strip in every page. These checks do not validate authenticated vault autofill, passkeys, or desktop pairing. The signed-out 1Password extension deliberately disables its vault popup until setup.
+
+### Import extensions and settings from Chrome
+
+Quit Chrome, then choose **Extensions → Import from Chrome…** (also **Import…**
+in the puzzle menu). Choose a Chrome profile and up to 20 extensions. **Choose
+folder…** supports a Chrome data folder in another location. Extensions already
+installed in the destination space are skipped; unpacked and non-store
+extensions must be installed manually.
+
+**Include supported settings** is selected by default. Each row shows how many
+preferences were recognized; hover over its checkbox to inspect the values.
+The first version supports appearance and behavior preferences with recognized
+names and types: themes, color schemes, selected display toggles, font size,
+zoom, and bounded theme adjustments, including those inside standard settings
+containers. It reads `chrome.storage.local` and the local copy of
+`chrome.storage.sync`. Unknown preferences, arbitrary text, arrays, website
+storage, IndexedDB, session storage, and managed policies are excluded. An
+extension with no supported settings can still be installed.
+
+**Continue to install** opens the selected Chrome Web Store listings. Complete
+each normal installation prompt and finish extension setup. Then choose
+**Extensions → Import Progress… → Apply settings**. Mica applies supported
+preferences in the chosen space and closes its temporary import tab. Applying
+is explicit because an extension’s setup can overwrite preferences.
+Existing defaults outside the imported keys are retained. This is a one-time
+import, not Chrome Sync. Accounts, authentication tokens, cookies, passwords,
+Keychain items, and desktop-app pairing are not migrated; sign in again where
+needed. Chromium’s existing extension compatibility limits still apply.
+
+**Extensions → Import Progress…** shows waiting, ready, completed, and failed entries.
+Pending imports survive restart; interrupted settings writes require an
+explicit retry. Filtered preferences remain available for **Reapply settings**
+if an extension resets them later. **Discard imports** removes saved preferences
+and cancels unfinished imports, while keeping extensions already installed. If Chrome is running or a settings database
+cannot be read, the affected row reports this; cancel and retry after quitting
+Chrome to include those settings.
+
+Chrome’s files are read without modification. LevelDB opens a bounded snapshot
+in memory; only allowlisted preference values are saved in Mica’s import queue.
+No raw Chrome database or account storage is copied into Mica. The allowlist is
+in `src/ExtensionImport.mm`; extending support requires reviewing the preference
+names, value types, and account-data boundary.
 
 ## Ad blocking
 
@@ -130,9 +173,19 @@ Current engine: CEF `158.0.6+g23f1736`, Chromium `158.0.8127.89`. CEF is bundled
 ```sh
 .tools/python/bin/ctest --test-dir build --output-on-failure
 python3 test/smoke.py
+python3 test/find.py
+python3 test/extension_import.py
 ```
 
-The integration test launches the real app with a disposable profile and a local HTTP fixture. It checks immediate typing, complete URL display/copying and first-click selection, a single empty tab per space, history completion and keyboard navigation, favicon restoration, minimum-size layout, ad blocking, DevTools console/DOM commands and full-panel layout, all four dock positions through the native and built-in controls, closing the DevTools window without closing its page, and resuming paused execution on detach. It also checks pinned rows and folders, Command-W without reopening closed pins, saved pin URLs, extension-download handoff, space cookie isolation, network error recovery, Command-Q, application Quit, window-close shutdown, and persistence after restart. Quit targets Mica’s controller directly because Chromium can replace the application delegate. Command-Q is handled at the application boundary so it never enters Chromium’s separate quit flow. Results are in `artifacts/`. Chromium's mock Keychain uses synthetic cookies, so the test does not access your normal browser profile or macOS Keychain. That mock is enabled only by the explicit test flag combined with a disposable `searchlight-smoke-*` profile and a localhost fixture URL.
+For the sidebar, URL editor, appearance, and sidebar-width restart checks alone,
+run `python3 test/smoke.py --chrome-only`. Results go to `artifacts/chrome-result.json`.
+
+The Find test posts native keyboard events through the application event loop
+to check page-to-search focus, live matches, Enter/Shift+Enter, ⌘G/⇧⌘G,
+query replacement, Escape, and search from the address editor with the sidebar
+hidden. Results go to `artifacts/find-smoke.json`.
+
+The integration test launches the real app with a disposable profile and a local HTTP fixture. It checks immediate typing, selected-tab URL editing/copying, on-demand keyboard focus, sidebar resizing and overflow, a single empty tab per space, history completion and keyboard navigation, favicon restoration, minimum-size layout, ad blocking, DevTools console/DOM commands and full-panel layout, all four dock positions through the native and built-in controls, closing the DevTools window without closing its page, and resuming paused execution on detach. It also checks pinned rows and folders, Command-W without reopening closed pins, saved pin URLs, extension-download handoff, space cookie isolation, network error recovery, Command-Q, application Quit, window-close shutdown, and sidebar width persistence after restart. Quit targets Mica’s controller directly because Chromium can replace the application delegate. Command-Q is handled at the application boundary so it never enters Chromium’s separate quit flow. Results are in `artifacts/`. Chromium's mock Keychain uses synthetic cookies, so the test does not access your normal browser profile or macOS Keychain. That mock is enabled only by the explicit test flag combined with a disposable `searchlight-smoke-*` profile and a localhost fixture URL.
 
 The optional 1Password compatibility probe is separate from the browser regression suite:
 
@@ -147,7 +200,7 @@ It records each checked behavior in `artifacts/extension-result.json` and fails 
 
 New installations store data in `~/Library/Application Support/Mica/`. If an earlier Searchlight profile exists, the first launch offers **Start Fresh** (the default) or **Keep My Data**, before initializing Chromium. Starting fresh leaves Searchlight's data and Keychain item untouched. Keeping existing data reuses that profile and its original Keychain identity; macOS may require permission for the new signed app to use the old encryption key. The choice is saved in `Mica/profile-choice.json`. Do not run both browsers against a shared profile at once. `MICA_PROFILE` selects an absolute alternate path; `SEARCHLIGHT_PROFILE` remains supported for existing development setups.
 
-`session.json` holds tabs/spaces; `Space-<uuid>/` contains each Chromium profile. `History/<uuid>.json` and `Favicons/<uuid>/` hold local suggestions and cached icons. No other browser data is imported. HTTP/HTTPS and `about:blank` are allowed for ordinary navigation. Explicit extension routes are validated separately. `mica://extensions/` opens the embedded extension manager; the old `searchlight://extensions` route remains compatible. Webpages have no native JavaScript bridge. The bundled DevTools frontend alone receives a scoped protocol bridge.
+`session.json` holds tabs/spaces; `Space-<uuid>/` contains each Chromium profile. `History/<uuid>.json` and `Favicons/<uuid>/` hold local suggestions and cached icons. `extension-imports.json` holds explicitly selected extension IDs, destination spaces, and filtered preference values while an import is pending. No accounts or other browser data are imported. HTTP/HTTPS and `about:blank` are allowed for ordinary navigation. Explicit extension routes are validated separately. `mica://extensions/` opens the embedded extension manager; the old `searchlight://extensions` route remains compatible. Webpages have no native JavaScript bridge. The bundled DevTools frontend alone receives a scoped protocol bridge.
 
 Chromium's subprocess sandbox and TLS validation remain enabled. New profiles use **Mica Safe Storage**; existing profiles retain **Searchlight Safe Storage** so encrypted data stays readable. Ad-hoc rebuilds change code identity and can trigger repeated Keychain authorization. Developer ID signed builds with a stable bundle identifier and team preserve signing identity across updates. The first transition to Mica may still ask for access once. Tests use a disposable profile and mock Keychain, never the user's normal profile.
 
@@ -179,8 +232,8 @@ and appcast with that key, verifies both, and writes the feed plus checksums to
 checks GitHub's SHA-256 digests, and refuses to overwrite a published version.
 
 ```sh
-python3 scripts/release.py --identity "$(cat .tools/signing-identity)" --notary-profile MicaNotary --notes-file resources/release-notes/0.2.9.txt
-python3 scripts/publish.py --notes-file resources/release-notes/0.2.9.txt --publish
+python3 scripts/release.py --identity "$(cat .tools/signing-identity)" --notary-profile MicaNotary --notes-file resources/release-notes/0.2.10.txt
+python3 scripts/publish.py --notes-file resources/release-notes/0.2.10.txt --publish
 python3 test/updates.py
 ```
 
@@ -223,6 +276,7 @@ and [Search's license](resources/LICENSE-Search.txt).
 - `src/Browser.mm`: native AppKit UI and CEF tab lifecycle.
 - `src/StartPage.mm`: native, responsive new-tab surface matching Paper artboard 06.
 - `src/SidebarUI.inc`: pinned rows, folder actions, and regular tabs.
+- `src/BrowserControls.mm`, `src/AddressUI.inc`: draggable sidebar divider, navigation overflow, and the native URL editor.
 - `src/DockClient.h`, `src/ToolsConnection.h`, `src/RendererApp.h`, `resources/devtools-host.js`: scoped docked DevTools transport.
 - `src/Shield.mm`, `src/ShieldRequest.h`: network and cosmetic ad blocking.
 - `src/Model.mm`: address resolution and validated session persistence.

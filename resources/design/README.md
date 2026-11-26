@@ -1,6 +1,6 @@
 # Mica interface references
 
-Editable source: [Paper, artboards 06–10](https://app.paper.design/file/01M893AJRGZKRCEM7YG87V6Q5R/p-1-0).
+Editable source: [Paper, artboards 06–14](https://app.paper.design/file/01M893AJRGZKRCEM7YG87V6Q5R/p-1-0).
 
 These JSX exports are design references, not application runtime code. AppKit
 implements them in `src/StartPage.mm`, `src/SidebarUI.inc`, and `src/ExtensionPanel.mm`. macOS system fonts
@@ -8,7 +8,7 @@ and symbols provide native input, focus, accessibility, and keyboard behavior.
 
 Paper tokens: surface `#FFFFFF`, chrome `#F5F5F5`, border `#E4E4E4`, text `#232323`,
 muted `#686868`, accent `#3D4A55`, selected `#E6E7E8`. Start-page text uses SF Pro
-at 28/16/13/12 pt, with a 560 × 64 pt search surface. Sidebar rows are 192 × 36 pt,
+at 28/16/13/12 pt, with a 560 × 64 pt search surface. Sidebar rows are 36 pt tall and fill the sidebar with 12 pt gutters (192 pt wide at the default 216 pt sidebar),
 with 16 pt indentation inside folders. Native layouts adapt to smaller windows.
 
 The native start page now shows up to six pins from the current space in place
@@ -51,9 +51,24 @@ The top bar, sidebar, and margins are transparent overlays on that shared materi
 With the sidebar hidden, viewport gutters are 8 pt on both sides. The left inset
 interpolates from 0 to 8 pt as the sidebar closes, preserving smooth motion.
 
-The 56 pt top bar shares a 28 pt vertical centerline across the native traffic
-lights, sidebar toggle, navigation, and extension icons. The traffic-light group
+The top sidebar controls share a 28 pt vertical centerline with the native traffic
+lights. Back, Forward, Refresh, and the sidebar toggle form one group. The traffic-light group
 starts at 18 pt and retains AppKit's button sizes, spacing, actions, and hover
-behavior. The collapsed sidebar toggle starts at 90 pt, leaving room after the
-window buttons. `src/WindowChrome.mm` keeps the native titlebar hit area aligned
+behavior. Navigation starts at 99 pt in the default sidebar, leaving at least 20 pt after the
+native window buttons. Controls use 24 pt hit areas on 26 pt centers, preserving the
+approved tighter grouping alongside the slightly wider native traffic lights. Below 216 pt, all four actions move to an ellipsis menu. `src/WindowChrome.mm` keeps the native titlebar hit area aligned
 after AppKit updates and restores native geometry for fullscreen transitions.
+
+Artboards 11–14 define the resizable sidebar and address editor. Sidebar widths
+are 216 pt by default, 320 pt in the expanded example, and 160 pt in the narrow
+example. The implementation allows 160–360 pt and persists the chosen width.
+The page begins 8 pt from the top with the sidebar visible. When the sidebar is
+hidden, a 56 pt row keeps navigation and window controls accessible. Extensions
+and pinned extension actions live in the sidebar footer, returning to that top
+row while the sidebar is hidden.
+
+`tab-address.jsx` is the exact URL-editor export. Clicking the already selected
+tab or pressing Command-L opens a 680 × 148 pt native panel beside the tab.
+The panel clamps to the window/screen, keeps the full editable URL, and preserves
+history completion. Copy link copies the current page URL. Escape, an outside
+click, switching tabs, or navigating dismisses the panel.

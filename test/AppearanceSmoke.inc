@@ -1,26 +1,28 @@
 // Allow one AppKit cycle after each appearance change before capturing controls.
 // This changes only this disposable app's appearance, never macOS preferences.
 - (BOOL)smokeWindowChromeAligned {
-    NSMutableArray<NSView *> *controls=[NSMutableArray arrayWithArray:@[_sidebarButton,_backButton,_forwardButton,_reloadButton,_extensionsButton]];
+    NSMutableArray<NSView *> *controls=[NSMutableArray arrayWithArray:@[_sidebarButton,_backButton,_forwardButton,_reloadButton,_navigationOverflow]];
     for (NSWindowButton type : {NSWindowCloseButton,NSWindowMiniaturizeButton,NSWindowZoomButton}) {
         NSButton *button=[_window standardWindowButton:type];
         if (!button || !button.action) return NO;
         [controls addObject:button];
     }
-    [controls addObjectsFromArray:_extensionToolbarButtons ?: @[]];
     NSView *frame=_root.superview;
     for (NSView *view in controls) {
         if (view.hidden) continue;
         NSRect rect=[view convertRect:view.bounds toView:_root];
-        if (fabs(NSMidY(rect)-28)>0.5 || !NSContainsRect(_root.bounds,rect)) return NO;
+        if (fabs(NSMidY(rect)-28)>0.5 || !NSContainsRect(_root.bounds,rect)) { fprintf(stderr,"chrome geometry: %s %s\n",view.accessibilityLabel.UTF8String,NSStringFromRect(rect).UTF8String); return NO; }
         NSPoint center=NSMakePoint(NSMidX(view.bounds),NSMidY(view.bounds));
         NSPoint hitPoint=[view convertPoint:center toView:frame.superview];
         NSView *hit=[frame hitTest:hitPoint];
-        if (hit!=view && ![hit isDescendantOf:view]) return NO;
+        if (hit!=view && ![hit isDescendantOf:view]) { fprintf(stderr,"chrome hit: %s hit %s frame %s\n",view.accessibilityLabel.UTF8String,NSStringFromClass(hit.class).UTF8String,NSStringFromRect(rect).UTF8String); return NO; }
     }
     NSButton *zoom=[_window standardWindowButton:NSWindowZoomButton];
     NSRect buttons=[zoom convertRect:zoom.bounds toView:_root];
-    return NSMinX(_sidebarButton.frame)-NSMaxX(buttons)>=8;
+    NSButton *first=_navigationOverflow.hidden?_backButton:_navigationOverflow;
+    CGFloat gap=NSMinX(first.frame)-NSMaxX(buttons);
+    if (gap<20) fprintf(stderr,"chrome gap: %.1f (window buttons %s, navigation %s)\n",gap,NSStringFromRect(buttons).UTF8String,NSStringFromRect(first.frame).UTF8String);
+    return gap>=20;
 }
 - (void)smokeAppearanceTick {
     if (_smokeAppearanceStage==0) {

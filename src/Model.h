@@ -14,3 +14,5 @@ NSString *SLNewID(void);
 NSDictionary *SLDefaultSession(void);
 NSDictionary *SLReadSession(NSString *path);
 BOOL SLWriteSession(NSDictionary *state, NSString *path, NSError **error);
+// Shared bounds for persisted sidebar geometry and native resizing.
+double SLSidebarWidth(id value);

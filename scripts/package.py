@@ -11,8 +11,8 @@ import subprocess
 import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-VERSION = '0.2.9'
-BUILD = '11'
+VERSION = '0.2.10'
+BUILD = '12'
 BUNDLE_ID = 'nl.martnr.mica'
 
 
@@ -74,6 +74,8 @@ def assemble(app, signing_identity):
         shutil.copy2(ROOT / 'vendor/cef' / name, contents / 'Resources' / name)
     shutil.copy2(ROOT / 'LICENSE', contents / 'Resources/LICENSE-Mica.txt')
     shutil.copy2(ROOT / 'vendor/sparkle/LICENSE', contents / 'Resources/LICENSE-Sparkle.txt')
+    shutil.copy2(ROOT / 'vendor/leveldb-1.23/LICENSE', contents / 'Resources/LICENSE-LevelDB.txt')
+    shutil.copy2(ROOT / 'vendor/snappy-1.2.2/COPYING', contents / 'Resources/LICENSE-Snappy.txt')
     for name in ('shield-rules.json', 'LICENSE-Search.txt', 'devtools-host.js', 'Mica.icns'):
         shutil.copy2(ROOT / 'resources' / name, contents / 'Resources' / name)
 

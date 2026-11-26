@@ -1,6 +1,7 @@
 #import "Browser.h"
 #import "Appearance.h"
 #import "WindowChrome.h"
+#import "BrowserControls.h"
 #import "Updates.h"
 #import "../test/UpdateProbe.h"
 #import "DefaultBrowser.h"
@@ -8,6 +9,9 @@
 #import "History.h"
 #import "StartPage.h"
 #import "ExtensionPanel.h"
+#import "ExtensionImportPanel.h"
+#import "ExtensionImport.h"
+#include "ExtensionImportBridge.h"
 #include "ChromeExtensions.h"
 #include "include/cef_id_mappers.h"
 #import <CommonCrypto/CommonDigest.h>
@@ -28,22 +32,10 @@ static NSString *SLDisplayAddress(NSString *url) {
 }
 static NSImage *Icon(NSString *name) { return [NSImage imageWithSystemSymbolName:name accessibilityDescription:nil]; }
 
-@interface SLAddressField : NSTextField
-@end
-@implementation SLAddressField
-- (BOOL)acceptsFirstMouse:(NSEvent *)event { return YES; }
-- (void)mouseDown:(NSEvent *)event {
-    // AppKit can create the field editor before delivering this first click.
-    // Once editing, later clicks go directly to that editor for normal caret,
-    // word-selection and drag-selection behavior.
-    [self selectText:nil];
-}
-@end
-
 class ToolsConnection;
 class ChromeTabHost;
 
-@interface SLTab : NSObject { @public CefRefPtr<CefBrowser> browser, toolsBrowser; CefRefPtr<CefRegistration> testRegistration; CefRefPtr<ToolsConnection> toolsConnection; CefRefPtr<ChromeTabHost> chrome; }
+@interface SLTab : NSObject { @public CefRefPtr<CefBrowser> browser, toolsBrowser; CefRefPtr<CefRegistration> testRegistration; CefRefPtr<ToolsConnection> toolsConnection; CefRefPtr<ChromeTabHost> chrome; CefRefPtr<SLExtensionImportBridge> importBridge; }
 @property NSString *uid;
 @property NSString *url;
 @property NSString *title;
@@ -52,6 +44,7 @@ class ChromeTabHost;
 @property NSString *faviconURL;
 @property NSUInteger navigationGeneration;
 @property BOOL trustedInternal;
+@property BOOL importingSettings;
 @property BOOL popup;
 @property BOOL rehosting;
 @property BOOL pinned;
@@ -137,7 +130,7 @@ class ChromeTabHost;
 }
 @end
 
-@interface SLController () <SLExtensionActions, NSMenuItemValidation>
+@interface SLController () <SLExtensionActions, SLAddressActions, NSMenuItemValidation>
 @property NSString *profile;
 @property NSWindow *window;
 @property SLWindowChrome *windowChrome;
@@ -147,6 +140,14 @@ class ChromeTabHost;
 @property SLChromeMaterial *chromeBackground;
 @property SLCanvas *sidebar;
 @property NSView *toolbar;
+@property NSView *utilityBar;
+@property NSButton *navigationOverflow;
+@property SLSidebarResizeHandle *sidebarResizeHandle;
+@property (nonatomic) CGFloat sidebarWidth;
+@property CGFloat resizeStartWidth;
+@property BOOL resizingSidebar;
+@property SLAddressPanel *addressPanel;
+@property id addressMouseMonitor;
 @property NSView *pageHost;
 @property NSView *home;
 @property SLCanvas *findBar;
@@ -167,6 +168,12 @@ class ChromeTabHost;
 @property SLExtensionPanel *extensionPanel;
 @property id extensionMouseMonitor;
 @property BOOL extensionRefreshScheduled;
+@property SLExtensionImportPanel *importPanel;
+@property NSMutableArray<NSMutableDictionary *> *extensionImports;
+@property NSTimer *extensionImportTimer;
+@property SLTab *extensionImportTab;
+@property NSMutableDictionary *extensionImportJob;
+@property NSDate *extensionImportStarted;
 @property SLViewportBackdrop *viewportBackdrop;
 @property CGFloat sidebarReveal;
 @property NSTimer *sidebarAnimation;
@@ -198,7 +205,6 @@ class ChromeTabHost;
 @property NSMutableArray<NSString *> *pendingExternalURLs;
 @property BOOL quitScheduled;
 @property BOOL finding;
-@property BOOL nativeAddressEditing;
 @property NSInteger devToolsCount;
 @property NSMutableArray<SLTab *> *chromeWindows;
 @property NSInteger chromeCreating;
@@ -225,6 +231,10 @@ class ChromeTabHost;
 @property NSString *smokeExternalOriginalID;
 @property NSString *pendingExtensionMenuSpaceID;
 - (void)refresh;
+- (void)hideAddressEditor;
+- (void)positionAddressEditor;
+- (void)setSidebarWidth:(CGFloat)width;
+- (NSMenu *)navigationMenu;
 - (void)layout;
 - (void)save;
 - (void)loadTab:(SLTab *)tab;
@@ -255,6 +265,10 @@ class ChromeTabHost;
 - (void)hideSuggestions;
 - (void)openChromeURL:(NSString *)url;
 - (void)ensureContext:(SLSpace *)space;
+- (void)importChromeExtensions:(id)sender;
+- (void)extensionImportTick:(NSTimer *)timer;
+- (void)finishExtensionImport:(BOOL)success;
+- (void)startExtensionImportTimer;
 - (void)renderSuggestions;
 - (BOOL)handleChromeCommand:(int)command tab:(SLTab *)tab;
 - (NSString *)faviconPath:(NSString *)url space:(SLSpace *)space;
@@ -549,8 +563,10 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
         _testMode=!updatesEnabled;
         _pendingExternalURLs=[NSMutableArray array];
         _profile=profile; _spaces=[NSMutableArray array]; _closingTabs=[NSMutableArray array]; _closedTabs=[NSMutableArray array];
+        _extensionImports=[SLReadExtensionImports([profile stringByAppendingPathComponent:@"extension-imports.json"]) mutableCopy];
         NSDictionary *state=SLReadSession([profile stringByAppendingPathComponent:@"session.json"]);
         _sidebarVisible=[state[@"sidebarVisible"] boolValue];
+        _sidebarWidth=SLSidebarWidth(state[@"sidebarWidth"]);
         _sidebarReveal=_sidebarVisible?1:0;
         _toolsPosition=state[@"devToolsPosition"]; _adblockEnabled=[state[@"adblockEnabled"] boolValue];
         _pausedHosts=[state[@"adblockPausedHosts"] mutableCopy];
@@ -615,15 +631,36 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
     _shieldButton=[self button:@"shield.lefthalf.filled" label:@"Pause ad blocking for this site" action:@selector(toggleSiteShield:)];
     _extensionsButton=[self button:@"puzzlepiece.extension" label:@"Extensions" action:@selector(showExtensionMenu:)];
     for (NSView *view in @[_backButton,_forwardButton,_reloadButton,_toolsButton,_pinButton,_shieldButton,_extensionsButton]) [_toolbar addSubview:view];
-    [_root addSubview:_sidebarButton];
+    [_toolbar addSubview:_sidebarButton];
+    _navigationOverflow=[self button:@"ellipsis" label:@"Navigation controls" action:@selector(showNavigationMenu:)];
+    [_toolbar addSubview:_navigationOverflow];
+    _utilityBar=[SLCanvas new]; ((SLCanvas *)_utilityBar).fill=NSColor.clearColor; [_root addSubview:_utilityBar];
+    [_utilityBar addSubview:_extensionsButton];
+    _sidebarResizeHandle=[SLSidebarResizeHandle new]; _sidebarResizeHandle.toolTip=@"Drag to resize sidebar"; [_root addSubview:_sidebarResizeHandle];
+    __weak SLController *resizeOwner=self;
+    _sidebarResizeHandle.resizeBy=^(CGFloat delta,BOOL finished) {
+        SLController *owner=resizeOwner; if (!owner || !owner.sidebarVisible) return;
+        if (!owner.resizingSidebar) {
+            owner.resizeStartWidth=owner.sidebarWidth; owner.resizingSidebar=YES;
+            [owner hideAddressEditor]; [owner hideExtensionMenu];
+        }
+        [owner setSidebarWidth:owner.resizeStartWidth+delta];
+        if (finished) { owner.resizingSidebar=NO; [owner save]; }
+    };
     _toolsButton.hidden=YES; _pinButton.hidden=YES; _shieldButton.hidden=YES;
-    _address=[SLAddressField new]; _address.bordered=NO; _address.drawsBackground=NO; _address.focusRingType=NSFocusRingTypeNone; _address.font=[NSFont systemFontOfSize:13];
+    _address=[NSTextField new]; _address.bordered=NO; _address.drawsBackground=NO; _address.focusRingType=NSFocusRingTypeNone; _address.font=[NSFont systemFontOfSize:14];
     _address.cell.usesSingleLineMode=YES; _address.cell.scrollable=YES; _address.lineBreakMode=NSLineBreakByTruncatingTail;
     _address.placeholderString=@"Search or enter a URL"; _address.target=self; _address.action=@selector(submitAddress:); _address.delegate=self;
-    _address.accessibilityLabel=@"Address"; [_toolbar addSubview:_address];
+    _address.accessibilityLabel=@"Address";
+    _address.textColor=SLThemeColor(SLText);
+    _addressPanel=[[SLAddressPanel alloc] initWithAddress:_address target:self];
     _tabList=[SLCanvas new]; _tabList.fill=NSColor.clearColor;
     _tabScroll=[NSScrollView new]; _tabScroll.drawsBackground=NO; _tabScroll.hasVerticalScroller=YES; _tabScroll.autohidesScrollers=YES; _tabScroll.documentView=_tabList;
+    _tabScroll.scrollerStyle=NSScrollerStyleOverlay;
     [_sidebar addSubview:_tabScroll];
+    _tabScroll.contentView.postsBoundsChangedNotifications=YES;
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(sidebarDidScroll:) name:NSViewBoundsDidChangeNotification object:_tabScroll.contentView];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(applicationDeactivated:) name:NSApplicationDidResignActiveNotification object:NSApp];
     _spacePicker=[[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO]; _spacePicker.target=self; _spacePicker.action=@selector(changeSpace:); _spacePicker.bordered=NO;
     _spacePicker.font=[NSFont systemFontOfSize:13 weight:NSFontWeightMedium]; _spacePicker.accessibilityLabel=@"Space"; [_sidebar addSubview:_spacePicker];
     _spaceActionsButton=[self button:@"ellipsis" label:@"Space actions" action:@selector(showSpaceMenu:)];
@@ -631,6 +668,8 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
     _status=[self label:@"" size:11 weight:NSFontWeightRegular]; _status.textColor=NSColor.secondaryLabelColor; _status.lineBreakMode=NSLineBreakByTruncatingMiddle; [_root addSubview:_status];
     _findBar=[SLCanvas new]; _findBar.fill=NSColor.clearColor; [_root addSubview:_findBar];
     _findField=[NSSearchField new]; _findField.placeholderString=@"Find in page"; _findField.target=self; _findField.action=@selector(findNext:); _findField.delegate=self; _findField.accessibilityLabel=@"Find in page"; [_findBar addSubview:_findField];
+    // Text changes already search live; only Return should send the action.
+    _findField.sendsWholeSearchString=YES;
     _findCount=[self label:@"" size:11 weight:NSFontWeightRegular]; [_findBar addSubview:_findCount];
     NSButton *previous=[self button:@"chevron.up" label:@"Previous match" action:@selector(findPrevious:)]; previous.identifier=@"previous"; [_findBar addSubview:previous];
     NSButton *next=[self button:@"chevron.down" label:@"Next match" action:@selector(findNext:)]; next.identifier=@"next"; [_findBar addSubview:next];
@@ -639,6 +678,7 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
     [self buildMenus]; [self layout]; [self refresh]; [_window makeKeyAndOrderFront:nil]; [NSApp activateIgnoringOtherApps:YES];
     [_updates start];
     [self ensureContext:_activeSpace]; [self loadTab:_activeTab];
+    [self startExtensionImportTimer];
     if (!_activeTab.url.length) [self focusNewTab];
     NSArray *pending=_pendingExternalURLs.copy; [_pendingExternalURLs removeAllObjects]; [self openExternalURLArguments:pending];
     _smokePath=NSProcessInfo.processInfo.environment[@"SEARCHLIGHT_SMOKE_RESULT"];
@@ -650,38 +690,58 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
     }
 }
 - (void)layout {
-    CGFloat width=_root.bounds.size.width, height=_root.bounds.size.height, side=round(_sidebarReveal*216);
+    // AppKit sends resize notifications while the window is still being built.
+    if (!_toolsPanel) return;
+    CGFloat width=_root.bounds.size.width, height=_root.bounds.size.height, side=round(_sidebarReveal*_sidebarWidth);
     CGFloat buttonY=(SLToolbarHeight-30)/2;
-    _sidebar.hidden=side<1; _sidebar.frame=NSMakeRect(side-216,0,216,height);
-    _toolbar.frame=NSMakeRect(side,0,width-side,SLToolbarHeight);
-    CGFloat offset=124-114*_sidebarReveal;
-    _sidebarButton.frame=NSMakeRect(90+84*_sidebarReveal,buttonY,30,30);
-    _backButton.frame=NSMakeRect(offset,buttonY,24,30); offset+=36;
-    _forwardButton.frame=NSMakeRect(offset,buttonY,24,30); offset+=36;
-    _reloadButton.frame=NSMakeRect(offset,buttonY,24,30); offset+=40;
-    _extensionsButton.frame=NSMakeRect(width-side-43,buttonY,30,30);
-    CGFloat toolbarRight=NSMinX(_extensionsButton.frame)-6;
-    NSUInteger capacity=(NSUInteger)MAX(0,floor((toolbarRight-offset-180)/32));
+    _sidebar.hidden=side<1; _sidebar.frame=NSMakeRect(side-_sidebarWidth,0,_sidebarWidth,height);
+    // The complete group stays beside the traffic lights, with a larger gap
+    // between the two groups than between the navigation icons themselves.
+    BOOL hiddenSidebar=side<160;
+    CGFloat chromeWidth=hiddenSidebar?216:side;
+    _toolbar.frame=NSMakeRect(0,0,hiddenSidebar?width:side,SLToolbarHeight);
+    BOOL overflow=chromeWidth<216;
+    NSArray<NSButton *> *navigation=@[_backButton,_forwardButton,_reloadButton,_sidebarButton];
+    CGFloat offset=chromeWidth-117;
+    for (NSUInteger i=0;i<navigation.count;i++) {
+        navigation[i].hidden=overflow;
+        navigation[i].frame=NSMakeRect(offset+i*26,buttonY,24,30);
+    }
+    _navigationOverflow.hidden=!overflow;
+    _navigationOverflow.frame=NSMakeRect(chromeWidth-46,buttonY,28,30);
+    _utilityBar.frame=hiddenSidebar?NSMakeRect(MAX(240,width-312),0,MIN(300,width-248),56):NSMakeRect(side-_sidebarWidth+12,height-52,_sidebarWidth-24,36);
+    CGFloat utilityWidth=NSWidth(_utilityBar.bounds);
+    BOOL label=utilityWidth>=176;
+    _extensionsButton.title=label?@"Extensions":@""; _extensionsButton.font=[NSFont systemFontOfSize:13];
+    _extensionsButton.imagePosition=label?NSImageLeft:NSImageOnly;
+    _extensionsButton.alignment=NSTextAlignmentLeft;
+    _extensionsButton.frame=NSMakeRect(4,hiddenSidebar?buttonY:3,label?104:30,30);
+    NSUInteger capacity=(NSUInteger)MAX(0,floor((utilityWidth-NSMaxX(_extensionsButton.frame)-8)/32));
     NSUInteger visible=MIN(capacity,_extensionToolbarButtons.count);
     for (NSUInteger i=0;i<_extensionToolbarButtons.count;i++) {
         NSButton *button=_extensionToolbarButtons[i]; button.hidden=i>=visible;
-        if (!button.hidden) button.frame=NSMakeRect(toolbarRight-(visible-i)*32,buttonY,30,30);
+        if (!button.hidden) button.frame=NSMakeRect(utilityWidth-(visible-i)*32,hiddenSidebar?buttonY:3,30,30);
     }
-    _address.frame=NSMakeRect(offset,18,MAX(120,toolbarRight-visible*32-offset-8),24);
-    _spacePicker.frame=NSMakeRect(14,58,160,32);
-    _spaceActionsButton.frame=NSMakeRect(178,59,26,30);
-    _tabScroll.frame=NSMakeRect(12,100,192,MAX(100,height-116));
+    _sidebarResizeHandle.hidden=_sidebarReveal!=1;
+    _sidebarResizeHandle.frame=NSMakeRect(side-8,8,8,MAX(1,height-16));
+    _sidebarResizeHandle.sidebarWidth=_sidebarWidth;
+    _spacePicker.frame=NSMakeRect(14,58,_sidebarWidth-56,32);
+    _spaceActionsButton.frame=NSMakeRect(_sidebarWidth-38,59,26,30);
+    _tabScroll.frame=NSMakeRect(12,100,_sidebarWidth-24,MAX(100,height-164));
+    [_tabList setFrameSize:NSMakeSize(_tabScroll.contentSize.width,MAX(NSHeight(_tabList.frame),_tabScroll.contentSize.height))];
     _status.frame=NSMakeRect(side+12,height-22,width-side-24,17);
     CGFloat find=_finding?42:0;
-    _findBar.hidden=!_finding; _findBar.frame=NSMakeRect(side,SLToolbarHeight,width-side,42);
-    _findField.frame=NSMakeRect(16,7,240,28); _findCount.frame=NSMakeRect(265,12,75,18);
+    CGFloat top=hiddenSidebar?SLToolbarHeight:8;
+    _findBar.hidden=!_finding; _findBar.frame=NSMakeRect(side,top,width-side,42);
+    CGFloat findWidth=MAX(120,MIN(240,width-side-210));
+    _findField.frame=NSMakeRect(16,7,findWidth,28); _findCount.frame=NSMakeRect(findWidth+24,12,60,18);
     for (NSView *view in _findBar.subviews) {
-        if ([view.identifier isEqual:@"previous"]) view.frame=NSMakeRect(342,6,28,28);
-        if ([view.identifier isEqual:@"next"]) view.frame=NSMakeRect(372,6,28,28);
+        if ([view.identifier isEqual:@"previous"]) view.frame=NSMakeRect(findWidth+88,6,28,28);
+        if ([view.identifier isEqual:@"next"]) view.frame=NSMakeRect(findWidth+118,6,28,28);
         if ([view.identifier isEqual:@"closeFind"]) view.frame=NSMakeRect(width-side-42,6,28,28);
     }
     CGFloat leftInset=round(8*(1-_sidebarReveal));
-    NSRect content=NSMakeRect(side+leftInset,SLToolbarHeight+find,width-side-leftInset-8,MAX(1,height-SLToolbarHeight-8-find));
+    NSRect content=NSMakeRect(side+leftInset,top+find,width-side-leftInset-8,MAX(1,height-top-8-find));
     _viewportBackdrop.frame=NSInsetRect(content,-16,-16); _viewportBackdrop.needsDisplay=YES;
     BOOL docked=_activeTab && (_activeTab->toolsBrowser || _activeTab.toolsCreating) && !_activeTab.windowTools && !_activeTab.toolsClosing;
     NSUInteger pageCorners=15,toolsCorners=0;
@@ -719,6 +779,7 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
         bool visible=tab==_activeTab && !tab.error && !tab.closing && tab->browser && !_window.miniaturized;
         tab->chrome->Position(screen,visible,pageCorners);
     }
+    [self positionAddressEditor];
     [self positionSuggestions];
     [self positionExtensionMenu];
     [_windowChrome layout];
@@ -732,7 +793,7 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
 - (void)windowDidFailToExitFullScreen:(NSWindow *)window { if (window==_window) { [_windowChrome endFullScreenTransition]; [self layout]; } }
 - (void)windowDidResize:(NSNotification *)notification { [self layout]; }
 - (void)windowDidMove:(NSNotification *)notification { [self layout]; }
-- (void)windowDidMiniaturize:(NSNotification *)notification { [self layout]; }
+- (void)windowDidMiniaturize:(NSNotification *)notification { [self hideAddressEditor]; [self hideExtensionMenu]; [self layout]; }
 - (void)windowDidDeminiaturize:(NSNotification *)notification { [self layout]; }
 - (void)refresh {
     if (!_window || _quitting) return;
@@ -864,10 +925,9 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
     _activeSpace=target; [self addTabURL:url];
 }
 - (void)navigate:(NSString *)input {
-    _nativeAddressEditing=NO;
-    [self hideSuggestions];
     NSString *url=SLResolveAddress(input);
     if (!url) { NSBeep(); _status.stringValue=@"Enter an http or https address, or a search."; return; }
+    [self hideAddressEditor]; [self hideSuggestions];
     if (!url.length) { [self addTabURL:@""]; return; }
     [_window makeFirstResponder:nil];
     if (![_activeTab.url isEqual:url]) { _activeTab.favicon=[[NSImage alloc] initWithContentsOfFile:[self faviconPath:url space:_activeSpace]]; _activeTab.faviconURL=nil; }
@@ -889,7 +949,7 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
     if (!url.length) [self focusNewTab];
 }
 - (void)selectTab:(SLTab *)tab {
-    _nativeAddressEditing=NO;
+    [self hideAddressEditor];
     [self hideExtensionMenu];
     [self hideSuggestions];
     if (tab.closing) return;
@@ -900,11 +960,15 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
     if (tab->chrome) tab->chrome->Focus();
 }
 - (SLTab *)tabWithID:(NSString *)uid { for (SLSpace *space in _spaces) for (SLTab *tab in space.tabs) if ([tab.uid isEqual:uid]) return tab; return nil; }
-- (void)tabClicked:(NSButton *)sender { SLTab *tab=[self tabWithID:sender.identifier]; if (tab) [self selectTab:tab]; }
+- (void)tabClicked:(NSButton *)sender {
+    SLTab *tab=[self tabWithID:sender.identifier];
+    if (tab==_activeTab && tab) [self focusAddress:sender];
+    else if (tab) [self selectTab:tab];
+}
 - (void)closeTabButton:(NSButton *)sender { SLTab *tab=[self tabWithID:sender.identifier]; [self closeTab:tab sleep:tab.pinned]; }
 - (void)newTab:(id)sender { [self addTabURL:@""]; }
 - (BOOL)handleChromeCommand:(int)command tab:(SLTab *)tab {
-    NSDictionary *actions=@{@"IDC_NEW_TAB":@"newTab:",@"IDC_NEW_WINDOW":@"newTab:",@"IDC_CLOSE_TAB":@"closeActiveTab:",@"IDC_CLOSE_WINDOW":@"closeActiveTab:",@"IDC_RESTORE_TAB":@"reopenTab:",@"IDC_FOCUS_LOCATION":@"focusAddress:",@"IDC_FOCUS_SEARCH":@"focusAddress:",@"IDC_FIND":@"find:",@"IDC_SELECT_NEXT_TAB":@"nextTab:",@"IDC_SELECT_PREVIOUS_TAB":@"previousTab:",@"IDC_DEV_TOOLS":@"devTools:",@"IDC_DEV_TOOLS_CONSOLE":@"devTools:",@"IDC_DEV_TOOLS_INSPECT":@"devTools:",@"IDC_MANAGE_EXTENSIONS":@"manageChromeExtensions:"};
+    NSDictionary *actions=@{@"IDC_NEW_TAB":@"newTab:",@"IDC_NEW_WINDOW":@"newTab:",@"IDC_CLOSE_TAB":@"closeActiveTab:",@"IDC_CLOSE_WINDOW":@"closeActiveTab:",@"IDC_RESTORE_TAB":@"reopenTab:",@"IDC_FOCUS_LOCATION":@"focusAddress:",@"IDC_FOCUS_SEARCH":@"focusAddress:",@"IDC_FIND":@"find:",@"IDC_FIND_NEXT":@"findNext:",@"IDC_FIND_PREVIOUS":@"findPrevious:",@"IDC_SELECT_NEXT_TAB":@"nextTab:",@"IDC_SELECT_PREVIOUS_TAB":@"previousTab:",@"IDC_DEV_TOOLS":@"devTools:",@"IDC_DEV_TOOLS_CONSOLE":@"devTools:",@"IDC_DEV_TOOLS_INSPECT":@"devTools:",@"IDC_MANAGE_EXTENSIONS":@"manageChromeExtensions:"};
     for (NSString *name in actions) if (command==cef_id_for_command_id_name(name.UTF8String)) {
         SEL action=NSSelectorFromString(actions[name]); __weak SLController *owner=self;
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -918,8 +982,9 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
 }
 - (void)submitAddress:(NSTextField *)sender { if (_suggestionPanel.visible) [self acceptSuggestion]; else [self navigate:sender.stringValue]; }
 - (void)shortcut:(NSButton *)sender { [self navigate:sender.identifier]; }
-- (void)focusAddress:(id)sender { _nativeAddressEditing=YES; [self layout]; [_window makeKeyAndOrderFront:nil]; _address.stringValue=_activeTab.url ?: @""; [_window makeFirstResponder:_address]; [_address selectText:nil]; }
+
 - (void)focusNewTab {
+    [self hideAddressEditor]; [_window makeKeyAndOrderFront:nil];
     if (!_homeAddress || !_home || _home.hidden) [self showHome];
     [_window makeFirstResponder:_homeAddress]; [_homeAddress selectText:nil];
 }
@@ -961,7 +1026,7 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
     if (![_closingTabs containsObject:tab]) [_closingTabs addObject:tab];
     if (!_quitting && !tab.sleeping && ![self spaceForTab:tab].removing) {
         for (SLSpace *space in _spaces) if ([space.tabs containsObject:tab]) {
-            [_closedTabs addObject:@{@"url":tab.url,@"title":tab.title}]; if (_closedTabs.count>20) [_closedTabs removeObjectAtIndex:0];
+            if (!tab.importingSettings) { [_closedTabs addObject:@{@"url":tab.url,@"title":tab.title}]; if (_closedTabs.count>20) [_closedTabs removeObjectAtIndex:0]; }
             [space.tabs removeObject:tab]; break;
         }
     }
@@ -986,11 +1051,11 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
     if (_quitting) [self finishQuitIfReady];
     else { [self finishSpaceRemoval]; [self refresh]; }
 }
-- (void)closeCancelled:(SLTab *)tab { tab.closing=NO; tab.sleeping=NO; _quitting=NO; [self refresh]; }
+- (void)closeCancelled:(SLTab *)tab { tab.closing=NO; tab.sleeping=NO; _quitting=NO; [self startExtensionImportTimer]; [self refresh]; }
 - (void)reopenTab:(id)sender { NSDictionary *closed=_closedTabs.lastObject; if (closed) { [_closedTabs removeLastObject]; [self addTabURL:closed[@"url"]]; } }
 - (void)toggleSidebar:(id)sender {
+    [self hideAddressEditor]; [self hideExtensionMenu];
     _sidebarVisible=!_sidebarVisible; [_sidebarAnimation invalidate]; _sidebarAnimation=nil;
-    [self hideExtensionMenu];
     if (NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion) { _sidebarReveal=_sidebarVisible?1:0; [self layout]; [self save]; return; }
     _sidebarAnimationFrom=_sidebarReveal; _sidebarAnimationStart=CACurrentMediaTime();
     _sidebarAnimation=[NSTimer scheduledTimerWithTimeInterval:1.0/60 target:self selector:@selector(animateSidebar:) userInfo:nil repeats:YES];
@@ -1227,6 +1292,9 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
     if (_activeTab->browser) _activeTab->browser->Reload(); [self refresh];
 }
 - (BOOL)validateMenuItem:(NSMenuItem *)item {
+    if (item.action==@selector(goBack:)) return _backButton.enabled;
+    if (item.action==@selector(goForward:)) return _forwardButton.enabled;
+    if (item.action==@selector(reload:)) { item.title=_activeTab.loading?@"Stop loading":@"Refresh"; return _activeTab.url.length>0; }
     if (item.action==@selector(makeDefaultBrowser:)) {
         BOOL isDefault=SLIsDefaultBrowser();
         item.title=isDefault?@"Mica Is Your Default Browser":@"Make Mica Default Browser…";
@@ -1252,26 +1320,63 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
 - (void)zoomIn:(id)sender { if (_activeTab->browser) { auto host=_activeTab->browser->GetHost(); host->SetZoomLevel(MIN(5,host->GetZoomLevel()+0.5)); } }
 - (void)zoomOut:(id)sender { if (_activeTab->browser) { auto host=_activeTab->browser->GetHost(); host->SetZoomLevel(MAX(-5,host->GetZoomLevel()-0.5)); } }
 - (void)resetZoom:(id)sender { if (_activeTab->browser) _activeTab->browser->GetHost()->SetZoomLevel(0); }
-- (void)find:(id)sender { if (!_activeTab->browser) return; _finding=YES; [self layout]; [_window makeFirstResponder:_findField]; [_findField selectText:nil]; }
-- (void)findNext:(id)sender { if (_activeTab->browser && _findField.stringValue.length) _activeTab->browser->GetHost()->Find(_findField.stringValue.UTF8String,true,false,true); }
-- (void)findPrevious:(id)sender { if (_activeTab->browser && _findField.stringValue.length) _activeTab->browser->GetHost()->Find(_findField.stringValue.UTF8String,false,false,true); }
-- (void)closeFind:(id)sender { if (_activeTab && _activeTab->browser) _activeTab->browser->GetHost()->StopFinding(true); _finding=NO; _findCount.stringValue=@""; [self layout]; }
+- (void)find:(id)sender {
+    if (!_activeTab || !_activeTab->browser) return;
+    [self hideAddressEditor]; [self hideExtensionMenu];
+    _finding=YES; [self layout];
+    // The Chromium page is a separate key window. Changing the parent's
+    // first responder alone leaves subsequent typing in the page.
+    [_window makeKeyAndOrderFront:nil];
+    [_window makeFirstResponder:_findField]; [_findField selectText:nil];
+}
+- (BOOL)handleFindShortcut:(NSEvent *)event {
+    if (_quitting || !_activeTab || !_activeTab->browser || event.type!=NSEventTypeKeyDown) return NO;
+    NSEventModifierFlags modifiers=event.modifierFlags & (NSEventModifierFlagCommand|NSEventModifierFlagOption|NSEventModifierFlagControl|NSEventModifierFlagShift);
+    if (modifiers!=NSEventModifierFlagCommand || ![event.charactersIgnoringModifiers.lowercaseString isEqual:@"f"]) return NO;
+    NSWindow *source=event.window ?: NSApp.keyWindow;
+    NSWindow *page=_activeTab->chrome?_activeTab->chrome->NativeWindow():nil;
+    // DevTools and extension popups retain their own Find behavior.
+    if (source!=_window && source!=page && source!=_addressPanel) return NO;
+    NSResponder *focused=source.firstResponder;
+    if (source==_window && [focused isKindOfClass:NSView.class] && [(NSView *)focused isDescendantOf:_toolsPanel]) return NO;
+    [self find:nil]; return YES;
+}
+- (void)findNext:(id)sender { if (_activeTab && _activeTab->browser && _findField.stringValue.length) _activeTab->browser->GetHost()->Find(_findField.stringValue.UTF8String,true,false,true); }
+- (void)findPrevious:(id)sender { if (_activeTab && _activeTab->browser && _findField.stringValue.length) _activeTab->browser->GetHost()->Find(_findField.stringValue.UTF8String,false,false,true); }
+- (void)closeFind:(id)sender {
+    if (_activeTab && _activeTab->browser) _activeTab->browser->GetHost()->StopFinding(true);
+    [_window makeFirstResponder:nil];
+    _finding=NO; _findCount.stringValue=@""; [self layout];
+    if (_activeTab && _activeTab->chrome) _activeTab->chrome->Focus();
+}
 #include "../test/AppearanceSmoke.inc"
 #include "../test/AddressSmoke.inc"
+#include "../test/SidebarSmoke.inc"
+#include "../test/FindSmoke.inc"
 #include "DesktopUI.inc"
 #include "HistoryUI.inc"
+#include "AddressUI.inc"
 #include "ExtensionsUI.inc"
+#include "ExtensionImportUI.inc"
+#include "../test/ExtensionImportSmoke.inc"
 #include "SidebarUI.inc"
 
 - (void)controlTextDidChange:(NSNotification *)notification {
     if (notification.object==_address || notification.object==_homeAddress) [self updateSuggestions:notification.object complete:!_suppressCompletion];
     _suppressCompletion=NO;
-    if (notification.object==_findField && _activeTab->browser) {
-        if (_findField.stringValue.length) _activeTab->browser->GetHost()->Find(_findField.stringValue.UTF8String,true,false,false);
+    if (notification.object==_findField && _activeTab && _activeTab->browser) {
+        // CEF restarts when the query changes. Request an active match too;
+        // a false final argument only counts matches in the Chrome runtime.
+        if (_findField.stringValue.length) _activeTab->browser->GetHost()->Find(_findField.stringValue.UTF8String,true,false,true);
         else { _activeTab->browser->GetHost()->StopFinding(true); _findCount.stringValue=@""; }
     }
 }
 - (BOOL)control:(NSControl *)control textView:(NSTextView *)view doCommandBySelector:(SEL)command {
+    if (control==_findField && (command==@selector(insertNewline:) || command==@selector(insertNewlineIgnoringFieldEditor:))) {
+        if (NSApp.currentEvent.modifierFlags & NSEventModifierFlagShift) [self findPrevious:nil];
+        else [self findNext:nil];
+        return YES;
+    }
     if (control==_address || control==_homeAddress) {
         if (command==@selector(deleteBackward:) || command==@selector(deleteForward:)) _suppressCompletion=YES;
         if (command==@selector(moveDown:) || command==@selector(moveUp:)) {
@@ -1283,7 +1388,7 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
         if (command==@selector(insertNewline:) && _suggestionPanel.visible) { [self acceptSuggestion]; return YES; }
     }
     if (command==@selector(cancelOperation:)) {
-        _nativeAddressEditing=NO; [self layout];
+        [self hideAddressEditor];
         [self hideSuggestions];
         if (control==_findField) [self closeFind:nil];
         [_window makeFirstResponder:nil]; _address.stringValue=_activeTab.url;
@@ -1298,13 +1403,14 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
         NSMutableArray *tabs=[NSMutableArray array];
         if (space.removing) continue;
         for (SLTab *tab in space.tabs) {
+            if (tab.importingSettings) continue;
             NSMutableDictionary *entry=[@{@"id":tab.uid,@"url":tab.url,@"title":tab.title,@"pinned":@(tab.pinned)} mutableCopy];
             if (tab.pinned) { entry[@"pinURL"]=tab.pinURL ?: tab.url; entry[@"pinTitle"]=tab.pinTitle ?: tab.title; if (tab.folderID) entry[@"folderID"]=tab.folderID; }
             [tabs addObject:entry];
         }
         [spaces addObject:@{@"id":space.uid,@"name":space.name,@"activeTab":space.activeID ?: @"",@"tabs":tabs,@"folders":space.folders}];
     }
-    return @{@"version":@1,@"activeSpace":_activeSpace.uid,@"spaces":spaces,@"sidebarVisible":@(_sidebarVisible),@"adblockEnabled":@(_adblockEnabled),@"adblockPausedHosts":_pausedHosts,@"devToolsPosition":_toolsPosition};
+    return @{@"version":@1,@"activeSpace":_activeSpace.uid,@"spaces":spaces,@"sidebarVisible":@(_sidebarVisible),@"sidebarWidth":@(_sidebarWidth),@"adblockEnabled":@(_adblockEnabled),@"adblockPausedHosts":_pausedHosts,@"devToolsPosition":_toolsPosition};
 }
 - (void)save {
     [_saveTimer invalidate]; _saveTimer=nil;
@@ -1322,7 +1428,9 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
 - (BOOL)applicationShouldHandleReopen:(NSApplication *)app hasVisibleWindows:(BOOL)visible { [_window makeKeyAndOrderFront:nil]; return YES; }
 - (BOOL)applicationSupportsSecureRestorableState:(NSApplication *)app { return YES; }
 - (void)requestQuit {
-    [_sidebarAnimation invalidate]; _sidebarAnimation=nil; [self hideExtensionMenu];
+    [_extensionImportTimer invalidate]; _extensionImportTimer=nil;
+    if (_extensionImportJob) [self finishExtensionImport:NO];
+    [_sidebarAnimation invalidate]; _sidebarAnimation=nil; [self hideAddressEditor]; [self hideExtensionMenu];
     [self hideSuggestions];
     if (_smokePath.length) fprintf(stderr,"smoke: requestQuit at step %ld\n",(long)_smokeStep);
     if (_quitting) return;
@@ -1384,6 +1492,8 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
         NSMenuItem *m=[self menuItem:item[0] action:NSSelectorFromString(item[1]) key:item[2] flags:cmd menu:edit]; m.target=nil;
     }
     [edit addItem:NSMenuItem.separatorItem]; [self menuItem:@"Find in Page" action:@selector(find:) key:@"f" flags:cmd menu:edit];
+    [self menuItem:@"Find Next" action:@selector(findNext:) key:@"g" flags:cmd menu:edit];
+    [self menuItem:@"Find Previous" action:@selector(findPrevious:) key:@"G" flags:cmd menu:edit];
     NSMenu *view=submenu(@"View");
     [self menuItem:@"Focus Address" action:@selector(focusAddress:) key:@"l" flags:cmd menu:view];
     [self menuItem:@"Toggle Sidebar" action:@selector(toggleSidebar:) key:@"s" flags:cmd menu:view];
@@ -1410,6 +1520,8 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
     [self menuItem:@"Clear History in This Space" action:@selector(clearHistory:) key:@"" flags:0 menu:privacy];
     NSMenu *extensions=submenu(@"Extensions");
     [self menuItem:@"Manage Extensions…" action:@selector(showExtensions:) key:@"" flags:0 menu:extensions];
+    [self menuItem:@"Import from Chrome…" action:@selector(importChromeExtensions:) key:@"" flags:0 menu:extensions];
+    [self menuItem:@"Import Progress…" action:@selector(showExtensionImportProgress:) key:@"" flags:0 menu:extensions];
     [self menuItem:@"Get 1Password…" action:@selector(installOnePassword:) key:@"" flags:0 menu:extensions];
     [self menuItem:@"Browse Extensions…" action:@selector(browseExtensions:) key:@"" flags:0 menu:extensions];
 
@@ -1597,7 +1709,15 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
     if (_smokeTicks==0 || _smokeTicks%10==0) fprintf(stderr,"smoke: step %ld, title %s, error %s\n",(long)_smokeStep,_activeTab.title.UTF8String,(_activeTab.error ?: @"none").UTF8String);
     _smokeTicks++;
     if (_smokeTicks>180) { [self smokeFinish:@"Timed out waiting for native/CEF integration"]; return; }
+    if (_testMode && [NSProcessInfo.processInfo.environment[@"MICA_FIND_PROBE"] isEqual:@"1"]) { [self findSmokeTick]; return; }
+    if (_testMode && [NSProcessInfo.processInfo.environment[@"MICA_IMPORT_PROBE"] isEqual:@"1"]) { [self extensionImportSmokeTick]; return; }
     if ([NSProcessInfo.processInfo.environment[@"SEARCHLIGHT_SMOKE_RESTORE"] isEqual:@"1"]) {
+        if ([NSProcessInfo.processInfo.environment[@"SEARCHLIGHT_SMOKE_CHROME_ONLY"] isEqual:@"1"]) {
+            if (_activeTab.loading || ![_activeTab.title isEqual:@"Searchlight fixture"]) return;
+            if (_sidebarWidth!=320 || !_sidebarVisible || NSMinX(_pageHost.frame)!=320 || NSMinY(_pageHost.frame)!=8 || _addressPanel.visible) { [self smokeFinish:@"Sidebar width or address-free browsing layout did not survive restart"]; return; }
+            [_smokeChecks addObject:@"Resized sidebar width and address-free browsing layout survive a clean restart"];
+            [self smokeFinish:nil]; return;
+        }
         if (_activeTab.loading || ![_activeTab.title isEqual:@"Cookie present"]) return;
         NSUInteger loaded=0, pins=0;
         for (SLSpace *space in _spaces) for (SLTab *tab in space.tabs) { if (tab->browser) loaded++; if (tab.pinned) pins++; }
@@ -1606,6 +1726,8 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
         [_smokeChecks addObject:@"Saved pin URL and folder membership survive restart without reopening the pin"];
         if (!_adblockEnabled || ![_pausedHosts containsObject:@"example.com"]) { [self smokeFinish:@"Shield preferences were not restored"]; return; }
         if (![_toolsPosition isEqual:@"right"]) { [self smokeFinish:@"DevTools position did not persist"]; return; }
+        if (_sidebarWidth!=320 || NSMinX(_pageHost.frame)!=320) { [self smokeFinish:@"Resized sidebar width did not survive restart"]; return; }
+        [_smokeChecks addObject:@"Resized sidebar width survives restart"];
         if (!_activeSpace.history.entries.count) { [self smokeFinish:@"History did not persist"]; return; }
         for (SLSpace *space in _spaces) for (SLTab *tab in space.tabs) if (tab.pinned && !tab.favicon) { [self smokeFinish:@"Cached favicon did not restore"]; return; }
         [_smokeChecks addObject:@"Per-space history and cached pin favicons survive restart"];
@@ -1664,6 +1786,7 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
                 [_window setFrame:original display:YES]; [self layout]; [_home layoutSubtreeIfNeeded];
                 [_smokeChecks addObject:@"Start-page search and shortcuts fit the minimum window size"];
             }
+            if (![self smokeResizableSidebar]) return;
             [self toggleSidebar:nil]; _smokeStep=40; break;
         }
         case 40:
@@ -1688,6 +1811,24 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
         case 46:
             if (_activeTab.loading || ![_activeTab.title isEqual:@"Searchlight fixture"]) return;
             if (![self smokeAddressEditing]) return;
+            _smokeStep=47; break;
+        case 47: {
+            if (_activeTab.loading || ![_activeTab.title isEqual:@"Searchlight fixture"]) return;
+            NSString *expected=[_smokeURL stringByAppendingString:@"address-go?retained=yes#fragment"];
+            if (![String(_activeTab->browser->GetMainFrame()->GetURL()) isEqual:expected]) { [self smokeFinish:@"Go did not load the edited address in Chromium"]; return; }
+            SLTab *tab=_activeTab; NSUInteger count=_activeSpace.tabs.count;
+            [self focusAddress:nil]; NSTextView *editor=(NSTextView *)_address.currentEditor;
+            NSString *destination=[_smokeURL stringByAppendingString:@"address-return?retained=yes#fragment"];
+            [editor insertText:destination replacementRange:NSMakeRange(NSNotFound,0)];
+            [editor doCommandBySelector:@selector(insertNewline:)];
+            if (_addressPanel.visible || _activeTab!=tab || _activeSpace.tabs.count!=count || ![_activeTab.url isEqual:destination]) { [self smokeFinish:@"Return did not open the edited URL in the same tab"]; return; }
+            _smokeStep=48; break;
+        }
+        case 48:
+            if (_activeTab.loading || ![_activeTab.title isEqual:@"Searchlight fixture"]) return;
+            if (![String(_activeTab->browser->GetMainFrame()->GetURL()) isEqual:[_smokeURL stringByAppendingString:@"address-return?retained=yes#fragment"]]) { [self smokeFinish:@"Return did not load the edited address in Chromium"]; return; }
+            [_smokeChecks addObject:@"Go and Return load edited URLs in the same tab, preserving query and fragment"];
+            if ([NSProcessInfo.processInfo.environment[@"SEARCHLIGHT_SMOKE_CHROME_ONLY"] isEqual:@"1"]) { [self setSidebarWidth:320]; [self save]; [self smokeFinish:nil]; return; }
             [self navigate:_smokeURL]; _smokeStep=1; break;
         case 1:
             if (_activeTab.loading || ![_activeTab.title isEqual:@"Searchlight fixture"]) return;
@@ -1938,8 +2079,8 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
             if (!_activeTab->chrome || !_activeTab->browser || _activeTab->browser->GetHost()->GetRuntimeStyle()!=CEF_RUNTIME_STYLE_CHROME || _activeTab->chrome->NativeWindow().parentWindow!=_window) { [self smokeFinish:@"Browser is not embedded in the main Mica window"]; return; }
             if (_chromeWindows.count) { [self smokeFinish:@"Unexpected separate Chromium window"]; return; }
             NSRect toolbarScreen=[_window convertRectToScreen:[_toolbar convertRect:_toolbar.bounds toView:nil]];
-            if (!_activeTab->chrome->IsPageOnly() || NSIntersectsRect(toolbarScreen,_activeTab->chrome->NativeWindow().frame) || _address.hiddenOrHasHiddenAncestor) { [self smokeFinish:@"Navigation replaced Mica's controls with Chrome UI"]; return; }
-            [_smokeChecks addObject:@"Pages hide Chrome's toolbar/tab strip and never cover Mica's native address bar"];
+            if (!_activeTab->chrome->IsPageOnly() || NSIntersectsRect(toolbarScreen,_activeTab->chrome->NativeWindow().frame) || _addressPanel.visible) { [self smokeFinish:@"Navigation replaced Mica's controls with Chrome UI"]; return; }
+            [_smokeChecks addObject:@"Pages hide Chrome's toolbar/tab strip and preserve Mica's sidebar controls without a persistent address bar"];
             {
                 NSString *downloads=[_profile stringByAppendingPathComponent:@"downloads"];
                 [NSFileManager.defaultManager createDirectoryAtPath:downloads withIntermediateDirectories:YES attributes:nil error:nil];
@@ -1997,7 +2138,7 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
             [self closeActiveTab:nil];
             [self selectTab:[self tabWithID:_smokeExternalOriginalID]];
             [_smokeChecks addObject:@"External web links open in Mica tabs; internal, file and script URLs are rejected"];
-            [self save]; [self smokeFinish:nil]; break;
+            [self setSidebarWidth:320]; [self save]; [self smokeFinish:nil]; break;
     }
 }
 - (void)smokeFinish:(NSString *)error {

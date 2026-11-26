@@ -1,0 +1,11 @@
+Resize the sidebar by dragging its edge. Mica remembers the width, and navigation controls move into an overflow menu when space is limited.
+
+The permanent address bar is replaced by an on-demand URL editor. Click the selected tab or press Command-L to edit or copy the full URL, then press Return or use Go to navigate.
+
+Find in Page now takes keyboard focus reliably with Command-F, searches as you type, and supports Enter/Shift-Enter and Command-G/Shift-Command-G for moving between matches. Escape returns focus to the page. DevTools keeps its own Find behavior.
+
+Import Chrome extensions into Mica from Extensions → Import from Chrome. Choose a Chrome profile, select extensions, and install them through the Chrome Web Store.
+
+Supported appearance and behavior preferences can be imported after extension setup. Use Extensions → Import Progress to apply them, reapply them if an extension resets them, or discard the saved import.
+
+Signed-in accounts, cookies, sessions, tokens, and unknown settings are not imported. Extension data remains isolated to the destination Mica space.

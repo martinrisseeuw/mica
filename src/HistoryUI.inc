@@ -1,13 +1,8 @@
-- (void)controlTextDidBeginEditing:(NSNotification *)notification {
-    // This notification arrives on the first edit, not on focus. Replacing
-    // the value here would discard the user's first keystroke or paste.
-    if (notification.object==_address) _nativeAddressEditing=YES;
-}
 - (void)controlTextDidEndEditing:(NSNotification *)notification {
     if (notification.object!=_address) return;
     __weak SLController *owner=self;
     dispatch_async(dispatch_get_main_queue(), ^{
-        if (!owner.address.currentEditor) { owner.nativeAddressEditing=NO; [owner hideSuggestions]; [owner layout]; }
+        if (!owner.address.currentEditor) [owner hideSuggestions];
     });
 }
 // Native address suggestions. Included inside SLController's implementation.
@@ -51,19 +46,23 @@
     }));
 }
 - (void)hideSuggestions {
-    [_window removeChildWindow:_suggestionPanel]; [_suggestionPanel orderOut:nil];
+    [_suggestionPanel.parentWindow removeChildWindow:_suggestionPanel]; [_suggestionPanel orderOut:nil];
     _suggestions=nil; _suggestionField=nil; _typedQuery=nil;
     if (_suggestionMouseMonitor) { [NSEvent removeMonitor:_suggestionMouseMonitor]; _suggestionMouseMonitor=nil; }
 }
 - (void)positionSuggestions {
     if (!_suggestionPanel.visible || !_suggestionField) return;
     NSRect anchor=[_suggestionField convertRect:_suggestionField.bounds toView:nil];
-    anchor=[_window convertRectToScreen:anchor];
+    anchor=[_suggestionField.window convertRectToScreen:anchor];
     CGFloat width=MIN(820,MAX(anchor.size.width,480));
+    // Keep the editor's Copy link and Go controls exposed while completing.
+    if (_suggestionField.window==_addressPanel) { anchor=_addressPanel.frame; width=NSWidth(anchor); }
     NSRect screen=_window.screen.visibleFrame;
     CGFloat x=MAX(NSMinX(screen)+8,MIN(anchor.origin.x-12,NSMaxX(screen)-width-8));
     CGFloat height=12+_suggestions.count*60+36;
-    CGFloat y=MAX(NSMinY(screen)+8,NSMinY(anchor)-height-8);
+    CGFloat y=NSMinY(anchor)-height-8;
+    if (y<NSMinY(screen)+8 && NSMaxY(screen)-NSMaxY(anchor)>height+16) y=NSMaxY(anchor)+8;
+    y=MAX(NSMinY(screen)+8,y);
     [_suggestionPanel setFrame:NSMakeRect(x,y,width,height) display:YES];
 }
 - (void)updateSuggestions:(NSTextField *)field complete:(BOOL)complete {
@@ -93,7 +92,12 @@
         _suggestionPanel.releasedWhenClosed=NO; _suggestionPanel.opaque=NO; _suggestionPanel.backgroundColor=NSColor.clearColor;
         _suggestionPanel.hasShadow=YES; _suggestionPanel.hidesOnDeactivate=YES;
     }
-    [_window addChildWindow:_suggestionPanel ordered:NSWindowAbove]; [_suggestionPanel orderFront:nil];
+    NSWindow *parent=field.window;
+    if (_suggestionPanel.parentWindow!=parent) {
+        [_suggestionPanel.parentWindow removeChildWindow:_suggestionPanel];
+        [parent addChildWindow:_suggestionPanel ordered:NSWindowAbove];
+    }
+    [_suggestionPanel orderFront:nil];
     [self positionSuggestions]; [self renderSuggestions];
     if (!_suggestionMouseMonitor) {
         __weak SLController *owner=self;
