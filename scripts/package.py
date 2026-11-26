@@ -11,8 +11,8 @@ import subprocess
 import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-VERSION = '0.2.9'
-BUILD = '11'
+VERSION = '0.2.10'
+BUILD = '12'
 BUNDLE_ID = 'nl.martnr.mica'
 
 

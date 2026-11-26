@@ -64,6 +64,8 @@ private:
         [self terminate:nil]; return;
     }
     CefScopedSendingEvent sendingEvent;
+    // Focus native Find before the next queued key can reach Chromium.
+    if ([self.browserController handleFindShortcut:event]) return;
     [super sendEvent:event];
 }
 // Chromium temporarily installs its AppController as NSApp.delegate while

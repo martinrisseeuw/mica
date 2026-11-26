@@ -23,8 +23,16 @@ const CGFloat SLToolbarHeight=56;
         }
         _nativeButtonFrames=frames;
         _nativeTitlebarHeight=NSHeight([window standardWindowButton:NSWindowCloseButton].superview.superview.frame);
+        [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(nativeFrameChanged:) name:NSViewFrameDidChangeNotification object:nil];
     }
     return self;
+}
+- (void)nativeFrameChanged:(NSNotification *)notification {
+    if (_layingOut || _transitioning) return;
+    NSView *view=notification.object;
+    NSButton *close=[_window standardWindowButton:NSWindowCloseButton];
+    if (view==close.superview || view==close.superview.superview || view==close ||
+        view==[_window standardWindowButton:NSWindowMiniaturizeButton] || view==[_window standardWindowButton:NSWindowZoomButton]) [self layout];
 }
 - (void)applyLayout:(BOOL)custom {
     if (_layingOut) return;
@@ -34,6 +42,10 @@ const CGFloat SLToolbarHeight=56;
     NSView *root=_window.contentView;
     if (!container.superview || !root) return;
     _layingOut=YES;
+    // AppKit can reposition the native titlebar during appearance/layout updates
+    // after NSWindowDidUpdate. Keep the actual controls aligned on those changes.
+    close.superview.postsFrameChangedNotifications=YES;
+    container.postsFrameChangedNotifications=YES;
     CGFloat height=custom?SLToolbarHeight:_nativeTitlebarHeight;
     NSRect header=NSMakeRect(0,root.isFlipped?0:NSHeight(root.bounds)-height,NSWidth(root.bounds),height);
     NSRect frame=[root convertRect:header toView:container.superview];
@@ -46,6 +58,7 @@ const CGFloat SLToolbarHeight=56;
         NSButton *button=[_window standardWindowButton:type];
         NSRect native=_nativeButtonFrames[index++].rectValue;
         if (!button) continue;
+        button.postsFrameChangedNotifications=YES;
         NSRect target=custom?button.frame:native;
         if (custom) {
             // Preserve native button sizes and spacing; only move the group.

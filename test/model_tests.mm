@@ -73,6 +73,13 @@ int main(int argc, char **argv) { @autoreleasepool {
     NSDictionary *initial=SLDefaultSession();
     assert(SLWriteSession(initial,path,nil));
     assert([SLReadSession(path) isEqual:initial]);
+    NSMutableDictionary *geometry=[initial mutableCopy];
+    for (NSArray *sample in @[@[@320,@320],@[@160,@160],@[@360,@360],@[@(-10),@160],@[@9999,@360],@[@"320",@216],@[NSNull.null,@216],@[@YES,@216]]) {
+        geometry[@"sidebarWidth"]=sample[0]; assert(SLWriteSession(geometry,path,nil));
+        assert([SLReadSession(path)[@"sidebarWidth"] isEqual:sample[1]]);
+    }
+    [geometry removeObjectForKey:@"sidebarWidth"]; assert(SLWriteSession(geometry,path,nil));
+    assert([SLReadSession(path)[@"sidebarWidth"] isEqual:@216]);
     NSMutableDictionary *duplicates=[initial mutableCopy];
     NSMutableDictionary *duplicateSpace=[initial[@"spaces"][0] mutableCopy];
     NSDictionary *firstBlank=duplicateSpace[@"tabs"][0];

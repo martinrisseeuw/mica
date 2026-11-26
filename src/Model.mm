@@ -1,4 +1,5 @@
 #import "Model.h"
+#include <cmath>
 
 NSString *SLExternalWebURL(NSString *input) {
     if (![input isKindOfClass:NSString.class] || !input.length || [input rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location!=NSNotFound) return nil;
@@ -65,9 +66,14 @@ NSString *SLResolveAddress(NSString *input) {
     search.queryItems = @[[NSURLQueryItem queryItemWithName:@"q" value:value]];
     return search.URL.absoluteString;
 }
+double SLSidebarWidth(id value) {
+    if (![value isKindOfClass:NSNumber.class] || CFGetTypeID((__bridge CFTypeRef)value)==CFBooleanGetTypeID()) return 216;
+    double width=[value doubleValue];
+    return std::isfinite(width)?round(MAX(160,MIN(360,width))):216;
+}
 NSDictionary *SLDefaultSession(void) {
     NSString *space = SLNewID(), *tab = SLNewID();
-    return @{@"version": @1, @"activeSpace": space, @"sidebarVisible": @YES, @"adblockEnabled": @YES, @"adblockPausedHosts": @[], @"devToolsPosition": @"bottom",
+    return @{@"version": @1, @"activeSpace": space, @"sidebarVisible": @YES, @"sidebarWidth":@216, @"adblockEnabled": @YES, @"adblockPausedHosts": @[], @"devToolsPosition": @"bottom",
       @"spaces": @[@{@"id": space, @"name": @"Development", @"activeTab": tab, @"folders":@[],
         @"tabs": @[@{@"id": tab, @"title": @"New tab", @"url": @"", @"pinned": @NO}]}]};
 }
@@ -137,7 +143,7 @@ NSDictionary *SLReadSession(NSString *path) {
         if (hosts.count>=1000) break;
         if ([host isKindOfClass:NSString.class] && [host length]<254 && [host length]>0 && [[NSURLComponents componentsWithString:[@"https://" stringByAppendingString:host]].host.lowercaseString isEqual:host]) [hosts addObject:host];
     }
-    return @{@"version":@1, @"spaces":spaces, @"activeSpace":active, @"sidebarVisible":@(sidebar), @"adblockEnabled":@(shield), @"adblockPausedHosts":hosts, @"devToolsPosition":position};
+    return @{@"version":@1, @"spaces":spaces, @"activeSpace":active, @"sidebarVisible":@(sidebar), @"sidebarWidth":@(SLSidebarWidth(state[@"sidebarWidth"])), @"adblockEnabled":@(shield), @"adblockPausedHosts":hosts, @"devToolsPosition":position};
 }
 BOOL SLWriteSession(NSDictionary *state, NSString *path, NSError **error) {
     if (![[NSFileManager defaultManager] createDirectoryAtPath:path.stringByDeletingLastPathComponent withIntermediateDirectories:YES attributes:@{NSFilePosixPermissions:@0700} error:error]) return NO;

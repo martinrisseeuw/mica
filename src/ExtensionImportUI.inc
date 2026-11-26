@@ -13,7 +13,7 @@
     return saved;
 }
 - (void)importChromeExtensions:(id)sender {
-    [self hideExtensionMenu]; [self hideSuggestions];
+    [self hideAddressEditor]; [self hideExtensionMenu]; [self hideSuggestions];
     if (_quitting || _window.attachedSheet || !_activeSpace.contextReady) return;
     SLSpace *destination=_activeSpace;
     NSMutableSet *installed=[NSMutableSet setWithArray:[self installedExtensionsInSpace:destination].allKeys];

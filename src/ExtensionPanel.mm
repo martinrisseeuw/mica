@@ -97,14 +97,14 @@ NSView *SLExtensionGrid(NSArray<NSDictionary *> *actions, NSArray<NSString *> *p
             SLGridButton *pin=[[SLGridButton alloc] initWithFrame:NSMakeRect(x+44,y+36,20,20)]; pin.pinControl=YES; pin.bordered=NO;
             pin.state=pinned?NSControlStateValueOn:NSControlStateValueOff; pin.identifier=item[@"id"]; pin.target=target; pin.action=@selector(toggleExtensionPin:);
             pin.image=[NSImage imageWithSystemSymbolName:pinned?@"pin.fill":@"pin" accessibilityDescription:nil];
-            pin.toolTip=[NSString stringWithFormat:@"%@ %@ %@",pinned?@"Unpin":@"Pin",title,pinned?@"from toolbar":@"to toolbar"]; pin.accessibilityLabel=pin.toolTip; pin.accessibilityValue=pinned?@"Pinned":@"Not pinned";
+            pin.toolTip=[NSString stringWithFormat:@"%@ %@",pinned?@"Unpin":@"Pin",title]; pin.accessibilityLabel=pin.toolTip; pin.accessibilityValue=pinned?@"Pinned":@"Not pinned";
             [grid addSubview:pin]; previous.nextKeyView=pin; previous=pin;
         }
         NSTextField *label=Label(title,11); label.alignment=NSTextAlignmentCenter; label.lineBreakMode=NSLineBreakByTruncatingTail; label.frame=NSMakeRect(x,y+62,64,16); label.toolTip=title; [grid addSubview:label];
     }
     previous.nextKeyView=manage; manage.nextKeyView=first;
     NSButton *import=[NSButton buttonWithTitle:@"Import…" target:target action:@selector(importChromeExtensions:)]; import.bordered=NO; import.font=[NSFont systemFontOfSize:12]; import.frame=NSMakeRect(171,16,60,20); import.toolTip=@"Import extensions and supported settings from Chrome"; [root addSubview:import]; previous.nextKeyView=import; import.nextKeyView=manage;
-    NSTextField *hint=Label(actions.count?@"Pin extensions beside the address bar.":@"Add extensions from the Chrome Web Store.",12);
+    NSTextField *hint=Label(actions.count?@"Pin extensions in the sidebar.":@"Add extensions from the Chrome Web Store.",12);
     hint.textColor=SLThemeColor(SLSecondaryText); hint.frame=NSMakeRect(16,68+gridHeight,280,18); [root addSubview:hint];
     return root;
 }

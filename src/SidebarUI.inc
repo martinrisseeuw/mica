@@ -1,6 +1,8 @@
 // Included inside SLController. Pins are saved rows; a live page is optional.
 - (void)renderTabRow:(SLTab *)tab y:(CGFloat)y indent:(CGFloat)indent {
-    SLTabButton *button=[[SLTabButton alloc] initWithFrame:NSMakeRect(0,y,192,36)];
+    CGFloat width=_tabScroll.contentSize.width;
+    SLTabButton *button=[[SLTabButton alloc] initWithFrame:NSMakeRect(0,y,width,36)];
+    button.autoresizingMask=NSViewWidthSizable;
     NSString *title=tab.title.length?tab.title:@"New tab";
     button.title=title; button.indent=indent;
     button.font=[NSFont systemFontOfSize:13 weight:tab==_activeTab?NSFontWeightSemibold:NSFontWeightRegular];
@@ -12,25 +14,27 @@
     button.menu=[self tabMenu:tab]; [_tabList addSubview:button];
     if (!tab.pinned || tab->browser || tab.creating) {
         NSButton *close=[self button:@"xmark" label:[NSString stringWithFormat:tab.pinned?@"Close %@ (keep pin)":@"Close %@",title] action:@selector(closeTabButton:)];
-        close.identifier=tab.uid; close.frame=NSMakeRect(164,6,22,24); close.hidden=tab!=_activeTab;
+        close.identifier=tab.uid; close.frame=NSMakeRect(width-28,6,22,24); close.hidden=tab!=_activeTab;
+        close.autoresizingMask=NSViewMinXMargin;
         button.closeButton=close; [button addSubview:close];
     }
 }
 - (void)renderSidebar {
     for (NSView *view in [_tabList.subviews copy]) [view removeFromSuperview];
-    CGFloat y=0; BOOL hasPins=NO;
+    CGFloat y=0, width=_tabScroll.contentSize.width; BOOL hasPins=NO;
     for (SLTab *tab in _activeSpace.tabs) if (tab.pinned && !tab.folderID.length) {
         [self renderTabRow:tab y:y indent:0]; y+=40; hasPins=YES;
     }
     for (NSDictionary *folder in _activeSpace.folders) {
         BOOL collapsed=[folder[@"collapsed"] boolValue];
-        SLTabButton *row=[[SLTabButton alloc] initWithFrame:NSMakeRect(0,y,192,36)];
+        SLTabButton *row=[[SLTabButton alloc] initWithFrame:NSMakeRect(0,y,width,36)];
+        row.autoresizingMask=NSViewWidthSizable;
         row.title=folder[@"name"]; row.image=Icon(@"folder");
         row.font=[NSFont systemFontOfSize:13 weight:NSFontWeightMedium]; row.bordered=NO;
         row.target=self; row.action=@selector(toggleFolder:); row.identifier=folder[@"id"];
         row.accessibilityLabel=[NSString stringWithFormat:@"%@, %@ folder",row.title,collapsed?@"collapsed":@"expanded"];
         NSImageView *chevron=[NSImageView imageViewWithImage:Icon(collapsed?@"chevron.right":@"chevron.down")];
-        chevron.contentTintColor=SLThemeColor(SLSecondaryText); chevron.frame=NSMakeRect(171,12,9,12); [row addSubview:chevron];
+        chevron.contentTintColor=SLThemeColor(SLSecondaryText); chevron.frame=NSMakeRect(width-21,12,9,12); chevron.autoresizingMask=NSViewMinXMargin; [row addSubview:chevron];
         NSMenu *menu=[NSMenu new];
         for (NSArray *action in @[@[@"Rename Folder…",@"renameFolder:"],@[@"Remove Folder (Keep Pins)",@"removeFolder:"]]) {
             NSMenuItem *item=[[NSMenuItem alloc] initWithTitle:action[0] action:NSSelectorFromString(action[1]) keyEquivalent:@""];
@@ -42,15 +46,15 @@
         }
     }
     if (hasPins) {
-        NSBox *line=[[NSBox alloc] initWithFrame:NSMakeRect(10,y+8,172,1)]; line.boxType=NSBoxSeparator;
+        NSBox *line=[[NSBox alloc] initWithFrame:NSMakeRect(10,y+8,width-20,1)]; line.boxType=NSBoxSeparator; line.autoresizingMask=NSViewWidthSizable;
         [_tabList addSubview:line]; y+=24;
     }
     NSButton *newTab=[NSButton buttonWithTitle:@"  New tab" image:Icon(@"plus") target:self action:@selector(newTab:)];
-    newTab.frame=NSMakeRect(8,y,176,36); newTab.bordered=NO; newTab.alignment=NSTextAlignmentLeft;
+    newTab.frame=NSMakeRect(8,y,width-16,36); newTab.autoresizingMask=NSViewWidthSizable; newTab.bordered=NO; newTab.alignment=NSTextAlignmentLeft;
     newTab.font=[NSFont systemFontOfSize:13]; newTab.contentTintColor=SLThemeColor(SLSecondaryText);
     newTab.toolTip=@"New tab (⌘T)"; newTab.accessibilityLabel=@"New tab"; [_tabList addSubview:newTab]; y+=44;
     for (SLTab *tab in _activeSpace.tabs) if (!tab.pinned) { [self renderTabRow:tab y:y indent:0]; y+=40; }
-    _tabList.frame=NSMakeRect(0,0,192,MAX(y+8,_tabScroll.contentView.bounds.size.height));
+    _tabList.frame=NSMakeRect(0,0,width,MAX(y+8,_tabScroll.contentView.bounds.size.height));
 }
 - (NSMutableDictionary *)folderWithID:(NSString *)uid {
     for (NSMutableDictionary *folder in _activeSpace.folders) if ([folder[@"id"] isEqual:uid]) return folder;

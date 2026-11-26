@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Launch the real app against a localhost fixture using a disposable profile."""
-import http.server, json, os, pathlib, subprocess, tempfile, threading, struct, zlib, shutil
+import argparse, http.server, json, os, pathlib, subprocess, tempfile, threading, struct, zlib, shutil
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--chrome-only', action='store_true', help='Run sidebar, address editor, appearance, and width restoration checks only')
+options = parser.parse_args()
+suite = 'chrome' if options.chrome_only else 'smoke'
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 def png_chunk(kind, data):
     return struct.pack('!I', len(data))+kind+data+struct.pack('!I', zlib.crc32(kind+data))
@@ -53,12 +57,13 @@ with tempfile.TemporaryDirectory(prefix='searchlight-smoke-') as directory:
     artifact.mkdir(exist_ok=True)
     env['SEARCHLIGHT_SMOKE_SCREENSHOT'] = str(artifact / 'native-start-page.png')
     env.pop('MICA_PROFILE', None)  # The test must never inherit a real profile override.
+    env['SEARCHLIGHT_SMOKE_CHROME_ONLY'] = '1' if options.chrome_only else '0'
     results = []
     for phase in ['initial', 'restore']:
         result.unlink(missing_ok=True)
         if phase == 'restore':
             env['SEARCHLIGHT_SMOKE_RESTORE'] = '1'
-        with (artifact / f'smoke-{phase}.log').open('w') as log:
+        with (artifact / f'{suite}-{phase}.log').open('w') as log:
             app = subprocess.Popen([str(ROOT / 'dist/Mica.app/Contents/MacOS/Mica')], env=env, stdout=log, stderr=log)
             try:
                 code = app.wait(timeout=75)
@@ -66,15 +71,15 @@ with tempfile.TemporaryDirectory(prefix='searchlight-smoke-') as directory:
                 app.terminate()
                 try: app.wait(timeout=5)
                 except subprocess.TimeoutExpired: app.kill(); app.wait()
-                shutil.copy2(root / 'profile/chromium.log', artifact / f'smoke-{phase}-chromium.log')
-                raise SystemExit(f'Smoke test timed out; see artifacts/smoke-{phase}.log')
+                shutil.copy2(root / 'profile/chromium.log', artifact / f'{suite}-{phase}-chromium.log')
+                raise SystemExit(f'Smoke test timed out; see artifacts/{suite}-{phase}.log')
         if not result.exists():
-            raise SystemExit(f'App exited {code} without a smoke result; see artifacts/smoke-{phase}.log')
+            raise SystemExit(f'App exited {code} without a smoke result; see artifacts/{suite}-{phase}.log')
         payload = json.loads(result.read_text())
         payload['exitCode'] = code
         payload['phase'] = phase
         results.append(payload)
-        (artifact / 'smoke-result.json').write_text(json.dumps(results, indent=2))
+        (artifact / f'{suite}-result.json').write_text(json.dumps(results, indent=2))
         print(json.dumps(payload, indent=2), flush=True)
         if not payload['passed'] or code:
             raise SystemExit(1)

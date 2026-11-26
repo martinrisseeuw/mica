@@ -68,8 +68,8 @@
         NSDictionary *action=catalog[identifier]; if (!action) continue;
         NSButton *button=[self button:@"puzzlepiece.extension" label:[@"Open " stringByAppendingString:action[@"name"]] action:@selector(openExtensionButton:)];
         button.identifier=identifier; button.image=action[@"image"] ?: button.image; button.contentTintColor=nil;
-        NSMenu *menu=[NSMenu new]; NSMenuItem *unpin=[[NSMenuItem alloc] initWithTitle:@"Unpin from toolbar" action:@selector(unpinExtensionFromMenu:) keyEquivalent:@""]; unpin.target=self; unpin.representedObject=identifier; [menu addItem:unpin]; button.menu=menu;
-        [_toolbar addSubview:button]; [buttons addObject:button];
+        NSMenu *menu=[NSMenu new]; NSMenuItem *unpin=[[NSMenuItem alloc] initWithTitle:@"Unpin extension" action:@selector(unpinExtensionFromMenu:) keyEquivalent:@""]; unpin.target=self; unpin.representedObject=identifier; [menu addItem:unpin]; button.menu=menu;
+        [_utilityBar addSubview:button]; [buttons addObject:button];
     }
     _extensionToolbarButtons=buttons; if (_window) [self layout];
 }
@@ -103,7 +103,8 @@
     NSRect screen=_window.screen.visibleFrame;
     CGFloat width=_extensionPanel.frame.size.width,height=_extensionPanel.frame.size.height;
     CGFloat x=MAX(NSMinX(screen)+8,MIN(NSMaxX(anchor)+4-width,NSMaxX(screen)-width-8));
-    CGFloat y=MAX(NSMinY(screen)+8,NSMinY(anchor)-height-9);
+    CGFloat y=_sidebarReveal==1?NSMaxY(anchor)+9:NSMinY(anchor)-height-9;
+    y=MAX(NSMinY(screen)+8,MIN(y,NSMaxY(screen)-height-8));
     [_extensionPanel setFrame:NSMakeRect(x,y,width,height) display:YES];
 }
 - (void)hideExtensionMenu {
@@ -111,7 +112,7 @@
     if (_extensionMouseMonitor) { [NSEvent removeMonitor:_extensionMouseMonitor]; _extensionMouseMonitor=nil; }
 }
 - (void)showExtensionMenu:(id)sender {
-    [self hideSuggestions];
+    [self hideAddressEditor]; [self hideSuggestions];
     if (_extensionPanel.visible) { [self hideExtensionMenu]; return; }
     if (!_activeSpace.contextReady) { _pendingExtensionMenuSpaceID=_activeSpace.uid; [self ensureContext:_activeSpace]; return; }
     if (!_extensionPanel) {
