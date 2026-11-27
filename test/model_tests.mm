@@ -6,6 +6,13 @@
 #import "Profile.h"
 #include <cassert>
 int main(int argc, char **argv) { @autoreleasepool {
+    for (NSString *link in @[@"claude://login/callback?code=synthetic%2Bvalue&state=a%2Fb#done",@"slack://open?team=test",@"mailto:person@example.com",@"zoommtg://zoom.us/join?confno=123",@"CLAUDE://open"]) {
+        assert([SLExternalAppURL(link).absoluteString isEqual:link]);
+        assert(!SLAllowedNavigation(link));
+        assert(SLExternalWebURL(link)==nil);
+    }
+    for (NSString *link in @[@"",@"not a url",@"https://example.com/",@"http://localhost/",@"about:blank",@"file:///tmp/a",@"FILE:///tmp/a",@"javascript:alert(1)",@"data:text/html,a",@"blob:https://example.com/a",@"filesystem:https://example.com/a",@"chrome://settings",@"chrome-untrusted://a",@"chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/a",@"devtools://a",@"view-source:https://example.com",@"mica://extensions/",@"searchlight://extensions/",@"claude://user:password@open/",@"claude://open/\n",@" claude://open",@"1invalid:open",[@"claude:" stringByPaddingToLength:32769 withString:@"x" startingAtIndex:0]]) assert(SLExternalAppURL(link)==nil);
+    assert(SLExternalAppURL(nil)==nil);
     assert([SLExternalWebURL(@"https://example.com/path?q=hello#section") isEqual:@"https://example.com/path?q=hello#section"]);
     assert([SLExternalWebURL(@"http://localhost:3000/") isEqual:@"http://localhost:3000/"]);
     for (NSString *rejected in @[@"javascript:alert(1)",@"file:///etc/passwd",@"chrome://extensions/",@"mica://extensions/",@"https://",@"example.com",@"--remote-debugging-port=9222",@"https://example.com/\n"]) assert(SLExternalWebURL(rejected)==nil);

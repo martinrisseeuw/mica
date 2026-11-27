@@ -7,6 +7,19 @@ NSString *SLExternalWebURL(NSString *input) {
     if (![@[@"http",@"https"] containsObject:parts.scheme.lowercaseString ?: @""] || !parts.host.length) return nil;
     return parts.URL.absoluteString;
 }
+NSURL *SLExternalAppURL(NSString *input) {
+    if (![input isKindOfClass:NSString.class] || !input.length || input.length>32768 ||
+        [input rangeOfCharacterFromSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].location!=NSNotFound ||
+        [input rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location!=NSNotFound) return nil;
+    NSURLComponents *parts=[NSURLComponents componentsWithString:input];
+    NSString *scheme=parts.scheme.lowercaseString;
+    if (!scheme.length || parts.user || parts.password) return nil;
+    // Never send browser-internal, script, or local-resource URLs to Launch Services.
+    if ([@[@"http",@"https",@"about",@"javascript",@"data",@"file",@"filesystem",@"blob",
+          @"chrome",@"chrome-extension",@"chrome-native",@"chrome-search",@"chrome-untrusted",
+          @"devtools",@"view-source",@"mica",@"searchlight"] containsObject:scheme]) return nil;
+    return parts.URL;
+}
 NSString *SLNewID(void) { return NSUUID.UUID.UUIDString.lowercaseString; }
 BOOL SLIsExtensionsPage(NSString *url) {
     NSURLComponents *parts=[NSURLComponents componentsWithString:url];
