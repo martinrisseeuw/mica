@@ -4,6 +4,8 @@
 NSString *SLResolveAddress(NSString *input);
 // External app/Launch Services requests accept web URLs only, never internal pages or scripts.
 NSString *SLExternalWebURL(NSString *input);
+// Candidate for an explicitly confirmed app handoff, never ordinary navigation.
+NSURL *SLExternalAppURL(NSString *input);
 BOOL SLAllowedNavigation(NSString *url);
 BOOL SLTrustedExtensionURL(NSString *url);
 BOOL SLIsExtensionsPage(NSString *url);

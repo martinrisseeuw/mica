@@ -15,6 +15,7 @@
 #include "ChromeExtensions.h"
 #include "include/cef_id_mappers.h"
 #import <CommonCrypto/CommonDigest.h>
+#import <objc/runtime.h>
 #import "ShieldRequest.h"
 #include "include/cef_registration.h"
 #include "include/cef_app.h"
@@ -202,6 +203,7 @@ class ChromeTabHost;
 @property BOOL sidebarVisible;
 @property BOOL quitting;
 @property BOOL settingDefaultBrowser;
+@property BOOL externalAppPromptPending;
 @property NSMutableArray<NSString *> *pendingExternalURLs;
 @property BOOL quitScheduled;
 @property BOOL finding;
@@ -242,6 +244,9 @@ class ChromeTabHost;
 - (void)rehostChromeTab:(SLTab *)tab url:(NSString *)url;
 - (void)navigate:(NSString *)url;
 - (void)addTabURL:(NSString *)url;
+- (void)requestExternalAppURL:(NSString *)url fromTab:(SLTab *)tab origin:(NSString *)origin;
+- (NSURL *)applicationForExternalURL:(NSURL *)url;
+- (void)openExternalAppURL:(NSURL *)url application:(NSURL *)application completion:(void (^)(NSError *))completion;
 - (void)selectTab:(SLTab *)tab;
 - (void)tabReadyToClose:(SLTab *)tab;
 - (void)tabClosed:(SLTab *)tab;
@@ -428,16 +433,18 @@ public:
         if (!tab_) return;
         tab_.error=@"This page stopped responding. Reload to try again."; tab_.loading=NO; [owner_ refresh];
     }
-    bool OnBeforeBrowse(CefRefPtr<CefBrowser> source, CefRefPtr<CefFrame> frame, CefRefPtr<CefRequest> request, bool, bool) override {
+    bool OnBeforeBrowse(CefRefPtr<CefBrowser> source, CefRefPtr<CefFrame> frame, CefRefPtr<CefRequest> request, bool gesture, bool) override {
         SLTab *tab_=FindTab(source);
         if (!tab_) return true;
-        // Untrusted pages never navigate the browser to local files or OS protocols.
+        // App links are cancelled in Chromium and handed off only after native consent.
         if (!frame->IsMain()) return false;
         NSString *destination=String(request->GetURL());
         if (tab_.trustedInternal && SLTrustedExtensionURL(destination)) return false;
+        RequestExternalApp(source,frame,destination,gesture);
         return !SLAllowedNavigation(destination);
     }
-    bool OnOpenURLFromTab(CefRefPtr<CefBrowser> source, CefRefPtr<CefFrame>, const CefString &url, WindowOpenDisposition, bool gesture) override {
+    bool OnOpenURLFromTab(CefRefPtr<CefBrowser> source, CefRefPtr<CefFrame> frame, const CefString &url, WindowOpenDisposition, bool gesture) override {
+        RequestExternalApp(source,frame,String(url),gesture);
         if (gesture && SLAllowedNavigation(String(url))) [owner_ addTabURL:String(url)];
         return true;
     }
@@ -445,6 +452,7 @@ public:
         SLTab *tab_=FindTab(source);
         if (!tab_ || tab_.rehosting) return true;
         NSString *address=String(url); if (!address.length) address=@"about:blank";
+        if (SLExternalAppURL(address)) { RequestExternalApp(source,frame,address,gesture); return true; }
         BOOL extension=SLTrustedExtensionURL(String(frame->GetURL()));
         if (owner_.smokePath.length) fprintf(stderr,"popup requested %s gesture=%d extension=%d\n",address.UTF8String,gesture,extension);
         if (owner_.quitting || (!gesture && !extension) || !(SLAllowedNavigation(address) || (extension && SLTrustedExtensionURL(address)))) return true;
@@ -453,6 +461,12 @@ public:
         [space.tabs addObject:popup]; popups_[popupID]=popup;
         client=new TabClient(owner_,popup);
         return false;
+    }
+    void RequestExternalApp(CefRefPtr<CefBrowser> source, CefRefPtr<CefFrame> frame, NSString *url, bool gesture) {
+        if (!gesture || !frame || !frame->IsMain() || !SLExternalAppURL(url)) return;
+        SLTab *tab=FindTab(source);
+        NSString *origin=SLExternalWebURL(String(frame->GetURL()));
+        if (tab && origin) [owner_ requestExternalAppURL:url fromTab:tab origin:origin];
     }
     void OnBeforePopupAborted(CefRefPtr<CefBrowser> source, int popupID) override {
         auto it=popups_.find(popupID); if (it==popups_.end()) return;
@@ -557,6 +571,7 @@ private:
 CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLController *)NSApp.delegate,nil); }
 
 @implementation SLController
+#include "ExternalAppsUI.inc"
 - (instancetype)initWithProfile:(NSString *)profile updatesEnabled:(BOOL)updatesEnabled {
     if ((self=[super init])) {
         _updates=[[SLUpdates alloc] initWithEnabled:updatesEnabled];
@@ -1353,6 +1368,7 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
 #include "../test/AddressSmoke.inc"
 #include "../test/SidebarSmoke.inc"
 #include "../test/FindSmoke.inc"
+#include "../test/AppLinksSmoke.inc"
 #include "DesktopUI.inc"
 #include "HistoryUI.inc"
 #include "AddressUI.inc"
@@ -1709,6 +1725,7 @@ CefRefPtr<CefClient> SLDefaultChromeClient() { return new TabClient((SLControlle
     if (_smokeTicks==0 || _smokeTicks%10==0) fprintf(stderr,"smoke: step %ld, title %s, error %s\n",(long)_smokeStep,_activeTab.title.UTF8String,(_activeTab.error ?: @"none").UTF8String);
     _smokeTicks++;
     if (_smokeTicks>180) { [self smokeFinish:@"Timed out waiting for native/CEF integration"]; return; }
+    if (_testMode && [NSProcessInfo.processInfo.environment[@"MICA_APP_LINKS_PROBE"] isEqual:@"1"]) { [self appLinksSmokeTick]; return; }
     if (_testMode && [NSProcessInfo.processInfo.environment[@"MICA_FIND_PROBE"] isEqual:@"1"]) { [self findSmokeTick]; return; }
     if (_testMode && [NSProcessInfo.processInfo.environment[@"MICA_IMPORT_PROBE"] isEqual:@"1"]) { [self extensionImportSmokeTick]; return; }
     if ([NSProcessInfo.processInfo.environment[@"SEARCHLIGHT_SMOKE_RESTORE"] isEqual:@"1"]) {

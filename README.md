@@ -49,6 +49,17 @@ Use **File → New Folder** or **right-click a tab → Move to Folder → New Fo
 
 Choose **Mica → Make Mica Default Browser…** to request HTTP and HTTPS link handling through macOS. The system asks for consent; this never runs automatically. Links from other apps open in the active space. Only web URLs are accepted from external applications.
 
+Website buttons such as **Open Claude** can open installed desktop apps. Click the
+button, then choose **Open App** in Mica’s confirmation, which names the current
+tab’s website and destination app. Cancel keeps you on the page. Login callback parameters are
+passed unchanged to the app and are not shown in the confirmation. Missing apps
+and launch failures show an explanation. Handoffs require a user gesture and
+top-level navigation in the active tab. This includes links in embedded content
+that target the top-level page; the current website label is not a claim about
+which frame requested the link. Automatic navigation, subframe-only navigation,
+and browser-internal or local-file URLs cannot launch apps. Permission is requested
+for each handoff.
+
 Mica follows **System Settings → Appearance**, including live changes between Light, Dark, and Auto. The sidebar, controls, and viewport margins share one native background blur and tint; macOS Reduce Transparency provides the solid alternative. Start pages, suggestions, extension controls, and browser chrome use matching adaptive colors. Website appearance follows the site's own support for the system color scheme. With the sidebar hidden, the viewport has equal 8 pt left and right margins; this inset blends into the sidebar animation.
 
 Choose **DevTools ⋮ → Dock side** or **Developer → DevTools Position → Bottom / Right / Left / Window**. The frontend fills its panel without an extra Mica header. Both controls update the same saved placement, including docking back from a separate window. Docked DevTools stays attached to its tab and closes when that tab is unloaded or closed. The page and tools share one softly shadowed outer outline, with square corners at their seam.
@@ -174,6 +185,7 @@ Current engine: CEF `158.0.6+g23f1736`, Chromium `158.0.8127.89`. CEF is bundled
 .tools/python/bin/ctest --test-dir build --output-on-failure
 python3 test/smoke.py
 python3 test/find.py
+python3 test/app_links.py
 python3 test/extension_import.py
 ```
 
